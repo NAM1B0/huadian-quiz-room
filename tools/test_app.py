@@ -1,6 +1,7 @@
 """Acceptance tests for durable records and the requested scoring lifecycle."""
 import json
 import shutil
+import sqlite3
 import sys
 import tempfile
 import threading
@@ -9,6 +10,7 @@ import unittest
 import urllib.error
 import urllib.request
 from pathlib import Path
+from contextlib import closing
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -42,16 +44,83 @@ class Acceptance(unittest.TestCase):
             self.assertGreaterEqual(q["pdfPage"], 40)
         self.assertEqual(len(BANK["groups"]), 18)
 
-    def test_practice_latest_and_all_history_survive_restart(self):
+    def test_practice_latest_survives_restart_without_new_choice_logs(self):
         s = self.store
+        with s.connect() as db:
+            s.event(db, "practice", "1", wrong("1"), False)
         s.save_practice("1", wrong("1"))
         self.assertEqual(len(s.mistakes("practice")), 1)
+        s.review("practice:1", QUESTIONS["1"]["answer"])
         s.save_practice("1", QUESTIONS["1"]["answer"])
         self.assertEqual(s.mistakes("practice"), [])
         restarted = Store(self.temp.name)
         self.assertTrue(restarted.bootstrap()["practice"]["1"]["correct"])
-        self.assertEqual(restarted.history()["total"], 2)
-        self.assertEqual(restarted.history()["items"][1]["answer"], wrong("1"))
+        with restarted.connect() as db:
+            events = db.execute("SELECT * FROM events").fetchall()
+        self.assertEqual(len(events), 1, "Legacy logs remain untouched; no new granular logs are added")
+        self.assertEqual(json.loads(events[0]["answer"]), wrong("1"))
+
+    def test_delete_selected_exams_preserves_other_records_and_backs_up(self):
+        s = self.store
+        s.save_practice("1", wrong("1"))
+        submitted = []
+        for _ in range(2):
+            e = s.start_exam("judge")
+            self.fill(e, {"427"})
+            submitted.append(s.submit(e["id"]))
+        active = s.start_exam("single")
+        s.save_exam(active["id"], "1", wrong("1"))
+        before = s.bootstrap()
+        keep = s.exam(submitted[1]["id"])
+        ids = [submitted[0]["id"], active["id"]]
+        result = s.delete_exams(ids + ids[:1])
+        self.assertEqual(result, {"deletedIds": ids, "deletedCount": 2})
+        self.assertEqual(s.exam(keep["id"]), keep)
+        self.assertEqual(s.bootstrap()["practice"], before["practice"])
+        self.assertEqual([m["examId"] for m in s.mistakes("exam")], [keep["id"]])
+        self.assertEqual(len(s.mistakes("practice")), 1)
+        with s.connect() as db:
+            for eid in ids:
+                self.assertEqual(db.execute("SELECT COUNT(*) FROM events WHERE exam_id=?", (eid,)).fetchone()[0], 0)
+                self.assertEqual(db.execute("SELECT COUNT(*) FROM mistakes WHERE exam_id=?", (eid,)).fetchone()[0], 0)
+        backups = list((Path(self.temp.name) / "自动备份").glob("删除考试前-*.sqlite3"))
+        self.assertEqual(len(backups), 1)
+        with closing(sqlite3.connect(backups[0])) as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM exams").fetchone()[0], 3)
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM mistakes WHERE source='exam'").fetchone()[0], 2)
+        self.assertEqual(s.delete_exams(ids)["deletedCount"], 0)
+        self.assertEqual(len(list(backups[0].parent.glob("删除考试前-*.sqlite3"))), 1)
+        restarted = Store(self.temp.name)
+        self.assertEqual([e["id"] for e in restarted.bootstrap()["exams"]], [keep["id"]])
+        new = restarted.start_exam("single")
+        self.assertNotEqual(new["id"], active["id"])
+        self.assertEqual(new["answers"], {})
+
+    def test_delete_validation_and_backup_failure_preserve_records(self):
+        s = self.store
+        eid = s.start_exam("multiple")["id"]
+        s.save_exam(eid, "246", ["A"])
+        before = s.bootstrap()
+        for ids in (None, [], eid, {}, [1], [""], ["x" * 129], [eid] * 1001):
+            with self.assertRaises(UserError):
+                s.delete_exams(ids)
+        with patch.object(s, "backup", side_effect=OSError("disk full")):
+            with self.assertRaises(OSError):
+                s.delete_exams([eid])
+        self.assertEqual(s.bootstrap(), before)
+
+    def test_delete_is_atomic_on_database_failure(self):
+        s = self.store
+        eid = s.start_exam("single")["id"]
+        s.save_exam(eid, "1", wrong("1"))
+        with s.connect() as db:
+            before = [tuple(r) for r in db.execute("SELECT * FROM events")]
+            db.execute("CREATE TRIGGER reject_delete BEFORE DELETE ON exams BEGIN SELECT RAISE(ABORT,'simulated failure'); END")
+        with self.assertRaises(sqlite3.IntegrityError):
+            s.delete_exams([eid])
+        self.assertEqual(s.exam(eid)["answers"], {"1": wrong("1")})
+        with s.connect() as db:
+            self.assertEqual([tuple(r) for r in db.execute("SELECT * FROM events")], before)
 
     def test_review_is_independent_and_removal_switch_persists(self):
         s = self.store
@@ -180,7 +249,7 @@ class Acceptance(unittest.TestCase):
         self.store.save_practice("1", wrong("1"))
         exam = self.store.start_exam("multiple")
         self.store.save_exam(exam["id"], "246", ["A"])
-        before = (self.store.bootstrap(), self.store.history(), self.store.exam(exam["id"]))
+        before = (self.store.bootstrap(), self.store.exam(exam["id"]))
         server = Server(("127.0.0.1", 0), self.store)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
@@ -195,7 +264,7 @@ class Acceptance(unittest.TestCase):
                 with self.assertRaises(urllib.error.HTTPError) as context:
                     urllib.request.urlopen(base + "/api/practice/answers" + suffix)
                 self.assertEqual(context.exception.code, 400)
-            self.assertEqual(before, (self.store.bootstrap(), self.store.history(), self.store.exam(exam["id"])))
+            self.assertEqual(before, (self.store.bootstrap(), self.store.exam(exam["id"])))
             with urllib.request.urlopen(base + "/api/bootstrap") as response:
                 public = json.load(response)
             self.assertTrue(all("answer" not in q for q in public["bank"]["questions"]))
@@ -228,6 +297,18 @@ class Acceptance(unittest.TestCase):
                 self.assertEqual(json.load(r)["answer"], ["A"])
             with urllib.request.urlopen(base + "/api/backup") as r:
                 self.assertTrue(r.read().startswith(b"SQLite format 3"))
+            eid = self.store.start_exam("single")["id"]
+            req = urllib.request.Request(base + "/api/exam/delete", data=json.dumps({"ids": [eid]}).encode(), headers={"Content-Type": "application/json"})
+            with self.assertRaises(urllib.error.HTTPError) as context:
+                urllib.request.urlopen(req)
+            self.assertEqual(context.exception.code, 403)
+            self.assertEqual(self.store.exam(eid)["status"], "active")
+            req.add_header("X-App-Token", b["token"])
+            with urllib.request.urlopen(req) as r:
+                self.assertEqual(json.load(r)["deletedCount"], 1)
+            with self.assertRaises(urllib.error.HTTPError) as context:
+                urllib.request.urlopen(base + "/api/exam/" + eid)
+            self.assertEqual(context.exception.code, 404)
         finally:
             server.shutdown()
             server.server_close()

@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "1.0.3";
+const APP_VERSION = "1.0.4";
 const $ = s => document.querySelector(s);
 const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const labels = {single:"单选题", multiple:"多选题", judge:"判断题"};
@@ -27,7 +27,9 @@ const duration = value => { const s=Math.max(0,Math.floor(value || 0)); return [
 const getPref = (k, fallback) => { try {return localStorage.getItem(k) || fallback;} catch{return fallback;} };
 const setPref = (k,v) => { try {localStorage.setItem(k,v);} catch{} };
 let data, questions, groups, token, quiz=null, parts=[], busy=false, savePromise=Promise.resolve(), routeSerial=0;
-let homeMode=getPref("huadian:mode","practice"), recordFilter="all", mistakeFilter="all", historyPage=1, historyData=null;
+let homeMode=getPref("huadian:mode","practice"), recordFilter="all", mistakeFilter="all";
+let recordEditing=false, recordDeleting=false;
+const selectedExams=new Set();
 let lastError="", saveLabel="所有选择自动保存", toastTimer, timerBase=0, timerAt=0, timerId=null, reviewSnapshot=null;
 const owner = crypto.randomUUID();
 const pendingAnswers = new Map();
@@ -64,7 +66,7 @@ function shell(content){
 function heading(title,desc,eyebrow="学习空间",right=""){return `<div class="page-heading"><div><span class="eyebrow">${eyebrow}</span><h1>${title}</h1>${desc?`<p>${desc}</p>`:''}</div>${right}</div>`;}
 function home(){
   const examMode=homeMode==='exam';
-  return heading("公共与行业知识", "按题型进入，沿原题库的六个部分逐步完成。每一次选择，都会留在这里。", "中国华电 · 招聘考试题库",'<span class="edition">2026 版</span>')+
+  return heading("公共与行业知识", "按题型进入，沿原题库的六个部分逐步完成。练习进度自动保存，随时接着做。", "中国华电 · 招聘考试题库",'<span class="edition">2026 版</span>')+
   `<div class="mode-line"><div class="segmented" aria-label="刷题模式"><button data-action="mode" data-value="practice" class="${!examMode?'active':''}" aria-pressed="${!examMode}">${icon('book')}练习模式</button><button data-action="mode" data-value="exam" class="${examMode?'active':''}" aria-pressed="${examMode}">${icon('clock')}考试模式</button></div><span class="mode-description">${examMode?'组内随机出题 · 正向计时 · 全部作答后交卷':'不计时 · 即时查看对错 · 随时修改答案'}</span></div>
   <div class="type-grid">${Object.entries(labels).map(([type,label])=>{
     const ids=questionIds(type), p=ids.filter(id=>data.practice[id]), good=p.filter(id=>data.practice[id].correct).length;
@@ -151,21 +153,63 @@ function answerBoard(answered,key,active){
 }
 function switchControl(source){return `<label class="switch-wrap"><input type="checkbox" data-setting="autoRemove:${source}" ${data.settings['autoRemove:'+source]?'checked':''}><span>复习答对后自动移出</span></label>`;}
 
+function practiceStats(ids){
+  const answered=ids.filter(id=>data.practice[id]?.answer?.length);
+  const correct=answered.filter(id=>data.practice[id].correct===true).length;
+  return {total:ids.length,answered:answered.length,correct,accuracy:answered.length?Math.round(correct/answered.length*1000)/10:null};
+}
+function accuracyLabel(stats){return stats.accuracy===null?'—':stats.accuracy+'%';}
 function records(){
   const tab=parts[1]||'exams';
-  const header=heading('做题记录','未交卷的考试可继续作答；已交卷的考试保留题序、选择和结果。','学习档案')+`<div class="tabs"><button class="tab ${tab==='exams'?'active':''}" data-action="record-tab" data-value="exams">考试记录 <span class="muted">${data.exams.length}</span></button><button class="tab ${tab==='practice'?'active':''}" data-action="record-tab" data-value="practice">练习与复习记录</button></div>`;
+  const header=heading('做题记录',tab==='practice'?'按题型和原题库部分查看当前练习进度，统计以普通练习的最新选择为准。':'未交卷的考试可继续作答；已交卷的考试保留题序、选择和结果。','学习档案')+`<div class="tabs"><button class="tab ${tab==='exams'?'active':''}" data-action="record-tab" data-value="exams">考试记录 <span class="muted">${data.exams.length}</span></button><button class="tab ${tab==='practice'?'active':''}" data-action="record-tab" data-value="practice">练习记录</button></div>`;
   if(tab==='practice'){
-    const n=Object.keys(data.practice).length,c=Object.values(data.practice).filter(p=>p.correct).length;
-    return header+`<div class="stats-row"><div class="panel stat-box"><span>已练习题数</span><strong>${n}<small> / 563</small></strong></div><div class="panel stat-box"><span>当前答对</span><strong>${c}</strong></div><div class="panel stat-box"><span>历史选择次数</span><strong>${historyData?.total||0}</strong></div></div><div class="section-title"><h2>每一次选择都有记录</h2><span class="small muted">按时间倒序 · 包括答案修改</span></div>${!historyData?.items.length?empty('还没有练习记录','在练习模式中选择答案后，这里会自动保留每一次选择。'):`<div class="panel table-wrap"><table class="history-table"><thead><tr><th>时间</th><th>来源</th><th>题号 / 题型</th><th>当时选择</th><th>当时结果</th><th></th></tr></thead><tbody>${historyData.items.map(e=>`<tr><td>${fmtDate(e.at)}</td><td>${{practice:'正常练习','review-practice':'练习错题复习','review-exam':'考试错题复习'}[e.scope]}</td><td>${e.qid} · ${labels[questions.get(e.qid).type]}</td><td>${choiceString(e.answer)}</td><td><span class="pill ${e.correct==null?'':e.correct?'green':'red'}">${e.correct==null?'已清空':e.correct?'正确':'错误'}</span></td><td><a href="#/practice/${questions.get(e.qid).type}/${e.qid}">去练习</a></td></tr>`).join('')}</tbody></table></div><div class="pager">${button('history-prev','上一页','small',historyPage<=1?'disabled':'')}<span class="small muted">${historyPage} / ${Math.ceil(historyData.total/30)}</span>${button('history-next','下一页','small',historyPage*30>=historyData.total?'disabled':'')}</div>`}`;
+    const all=practiceStats(data.bank.questions.map(q=>q.id));
+    return header+`<div class="stats-row"><div class="panel stat-box"><span>已练习题数 / 总题数</span><strong>${all.answered}<small> / ${all.total}</small></strong></div><div class="panel stat-box"><span>当前答对数</span><strong>${all.correct}</strong></div><div class="panel stat-box"><span>正确率</span><strong>${accuracyLabel(all)}</strong></div></div><p class="summary-note">正确率＝当前答对数 ÷ 已练习题数。清空选择后不计入已练习；错题复习不改变普通练习统计。</p>${Object.entries(labels).map(([type,label])=>{
+      const stats=practiceStats(questionIds(type));
+      return `<section class="panel practice-summary" data-practice-type="${type}"><div class="practice-summary-head"><h2>${icon(type)}${label}</h2><p>已练习 <b class="mono">${stats.answered} / ${stats.total}</b><span>当前答对 <b class="mono">${stats.correct}</b></span><span>正确率 <b class="mono">${accuracyLabel(stats)}</b></span></p></div><div class="table-wrap"><table class="summary-table" aria-label="${label}分部分统计"><thead><tr><th scope="col">题库部分</th><th scope="col">已练习 / 总题数</th><th scope="col">当前答对数</th><th scope="col">正确率</th></tr></thead><tbody>${data.bank.groups.filter(g=>g.type===type).map(g=>{
+        const stats=practiceStats(data.bank.questions.filter(q=>q.group===g.id).map(q=>q.id));
+        return `<tr data-practice-group="${g.id}"><th scope="row"><span class="muted">${g.part}</span> ${esc(g.title)}</th><td class="mono">${stats.answered} / ${stats.total}</td><td class="mono">${stats.correct}</td><td class="mono">${accuracyLabel(stats)}</td></tr>`;
+      }).join('')}</tbody></table></div></section>`;
+    }).join('')}`;
   }
   const exams=data.exams.filter(e=>recordFilter==='all'||e.status===recordFilter);
-  return header+`<div class="filter-row"><span class="small muted">共 ${data.exams.length} 场 · ${data.exams.filter(e=>e.status==='active').length} 场未交卷</span><select id="record-filter" aria-label="筛选考试状态"><option value="all">全部状态</option><option value="active" ${recordFilter==='active'?'selected':''}>未交卷</option><option value="submitted" ${recordFilter==='submitted'?'selected':''}>已交卷</option></select></div>${!exams.length?empty('这里会保存你的每一场考试','从题库选择考试模式开始。退出后，未交卷的题序和答案会完整保留。'):`<div class="record-grid">${exams.map(e=>`<article class="panel record-card"><div class="record-symbol">${icon(e.type)}</div><div class="record-info"><h3>${labels[e.type]}全题考试 <span class="pill ${e.status==='submitted'?'green':'blue'}">${e.status==='submitted'?'已交卷':e.allAnswered?'全部已答 · 待交卷':'未完成 · 可继续'}</span></h3><p>第 ${examNumber(e.id)} 场 · ${fmtDate(e.created)} 开始 · ${e.answered} / ${e.total} 已答 · 用时 ${duration(e.elapsed)}${e.status==='submitted'?`<br>${fmtDate(e.submitted)} 交卷 · 错题 ${e.wrongCount} 道`:''}</p></div><div class="record-metric"><strong>${e.status==='submitted'?e.score:Math.round(e.answered/e.total*100)+'%'}</strong><small>${e.status==='submitted'?'等权折算 / 100':'已完成'}</small></div>${button('open-exam',e.status==='submitted'?'查看试卷':'继续作答',e.status==='submitted'?'':'primary',`data-id="${e.id}"`)}</article>`).join('')}</div>`}`;
+  const controls=recordEditing?`${button('delete-exams',`删除${selectedExams.size?'（'+selectedExams.size+'）':''}`,'danger',selectedExams.size&&!recordDeleting?'':'disabled')}${button('finish-exams','完成','primary',recordDeleting?'disabled':'')}`:button('edit-exams','编辑','',data.exams.length?'':'disabled');
+  return header+`<div class="filter-row"><span class="small muted" role="status">${recordEditing?`已选择 ${selectedExams.size} 场 · 勾选下方记录后删除`:`共 ${data.exams.length} 场 · ${data.exams.filter(e=>e.status==='active').length} 场未交卷`}</span><div class="record-actions"><select id="record-filter" aria-label="筛选考试状态" ${recordDeleting?'disabled':''}><option value="all">全部状态</option><option value="active" ${recordFilter==='active'?'selected':''}>未交卷</option><option value="submitted" ${recordFilter==='submitted'?'selected':''}>已交卷</option></select>${controls}</div></div>${!exams.length?empty(data.exams.length?'这个分类暂无考试记录':'还没有考试记录',data.exams.length?'可以切换上方状态查看其他考试。':'从题库选择考试模式开始，未交卷的题序和答案会自动保留。'):`<div class="record-grid">${exams.map(e=>`<article class="panel record-card ${selectedExams.has(e.id)?'selected-record':''}" data-exam-id="${esc(e.id)}">${recordEditing?`<label class="record-select"><input type="checkbox" id="exam-select-${esc(e.id)}" data-exam-select="${esc(e.id)}" aria-label="选择第 ${examNumber(e.id)} 场${labels[e.type]}考试" ${selectedExams.has(e.id)?'checked':''} ${recordDeleting?'disabled':''}><span>选择</span></label>`:`<div class="record-symbol">${icon(e.type)}</div>`}<div class="record-info"><h3>${labels[e.type]}全题考试 <span class="pill ${e.status==='submitted'?'green':'blue'}">${e.status==='submitted'?'已交卷':e.allAnswered?'全部已答 · 待交卷':'未完成 · 可继续'}</span></h3><p>第 ${examNumber(e.id)} 场 · ${fmtDate(e.created)} 开始 · ${e.answered} / ${e.total} 已答 · 用时 ${duration(e.elapsed)}${e.status==='submitted'?`<br>${fmtDate(e.submitted)} 交卷 · 错题 ${e.wrongCount} 道`:''}</p></div><div class="record-metric"><strong>${e.status==='submitted'?e.score:Math.round(e.answered/e.total*100)+'%'}</strong><small>${e.status==='submitted'?'等权折算 / 100':'已完成'}</small></div>${recordEditing?'':button('open-exam',e.status==='submitted'?'查看试卷':'继续作答',e.status==='submitted'?'':'primary',`data-id="${esc(e.id)}"`)}</article>`).join('')}</div>`}`;
+}
+function setRecordEditing(editing){
+  if(recordDeleting)return;
+  recordEditing=editing;selectedExams.clear();render();
+  $(`[data-action="${editing?'finish-exams':'edit-exams'}"]`)?.focus({preventScroll:true});
+}
+function selectExam(id,selected){
+  if(!recordEditing||recordDeleting||!data.exams.some(e=>e.id===id&&(recordFilter==='all'||e.status===recordFilter)))return;
+  if(selected)selectedExams.add(id);else selectedExams.delete(id);
+  render();$(`[data-exam-select="${id}"]`)?.focus({preventScroll:true});
+}
+function requestExamDeletion(){
+  if(!recordEditing||recordDeleting)return;
+  const ids=[...selectedExams].filter(id=>data.exams.some(e=>e.id===id));
+  if(!ids.length)return;
+  const active=data.exams.filter(e=>ids.includes(e.id)&&e.status==='active').length;
+  confirmDialog('删除所选考试记录？',`已选择 <b>${ids.length} 场考试</b>${active?`，其中 ${active} 场尚未交卷`:''}。这些考试的题序、选择、用时和<b>对应考试错题</b>将一起删除。<br>删除前会自动备份，其他考试与练习记录不受影响。`,'确认删除',()=>deleteExamRecords(ids));
+}
+async function deleteExamRecords(ids){
+  if(recordDeleting)return;
+  recordDeleting=true;render();
+  try{
+    const result=await api('/api/exam/delete',{ids});
+    data.exams=data.exams.filter(e=>!result.deletedIds.includes(e.id));
+    data.mistakes=data.mistakes.filter(m=>!result.deletedIds.includes(m.examId));
+    selectedExams.clear();lastError='';saveLabel='考试记录已更新';
+    await refresh();
+    toast(result.deletedCount?`已删除 ${result.deletedCount} 场考试及对应错题`:'所选考试记录已删除');
+  }finally{recordDeleting=false;render();}
 }
 function mistakesPage(){
   const source=parts[1]==='exam'?'exam':'practice',all=data.mistakes.filter(m=>m.source===source),list=all.filter(m=>mistakeFilter==='all'||questions.get(m.qid).type===mistakeFilter);
   return heading('错题集','按来源整理，复习选择独立保存。是否在答对后移出，由你决定。','查漏补缺')+`<div class="tabs">${['practice','exam'].map(s=>`<button class="tab ${source===s?'active':''}" data-action="mistake-tab" data-value="${s}">${s==='practice'?'练习错题':'考试错题'} <span class="muted">${data.mistakes.filter(m=>m.source===s).length}</span></button>`).join('')}</div><div class="filter-row"><select id="mistake-filter" aria-label="筛选错题类型"><option value="all">全部题型</option>${Object.entries(labels).map(([v,l])=>`<option value="${v}" ${mistakeFilter===v?'selected':''}>${l}</option>`).join('')}</select>${switchControl(source)}</div><div class="note-banner">${source==='practice'?'正常练习中改对答案，会自动移出这道错题。在本错题集中答对时，仅在上方开关开启后移出。':'每次交卷的错题分别保留，同一道题在多场考试中答错会出现多条记录。后续考试答对，不会影响以前的错题。'} 开关只作用于开启后的复习作答。</div>${!list.length?empty('这个分类暂时没有错题','继续练习，或切换上方分类查看。'): `<div class="section-title"><span class="small muted">${list.length} ${source==='exam'?'条错题记录':'道错题'}</span>${button('review-first',`开始复习${icon('arrow')}`,'primary small',`data-source="${source}"`)}</div><div class="mistake-list">${list.map(m=>{const q=questions.get(m.qid),g=groups.get(q.group);return `<article class="panel mistake-card"><span class="mistake-number">${q.number}</span><div class="info"><h3>${esc(q.text)}</h3><p>${labels[q.type]} · ${g.part} ${g.title} · 原选择 ${choiceString(m.original)}${source==='exam'?`<br>第 ${examNumber(m.examId)} 场 · ${fmtDate(m.examCreated)} 的考试`:''} ${m.reviewCorrect?'<span class="pill green">复习已答对 · 保留中</span>':''}</p></div>${button('review','复习这题','small',`data-id="${esc(m.id)}" data-source="${source}"`)}</article>`;}).join('')}</div>`}`;
 }
-function dataPage(){return heading('数据与备份','所有学习记录保存在本机程序文件夹中，换浏览器也能继续。','本地存储')+`<section class="panel data-panel"><h2>学习记录保存在这里</h2><p>练习的最新答案、每次选择的历史、考试题序与计时、每场考试的错题，以及错题复习设置，均写入本地数据库。正常退出不会清除记录。</p><code class="path">${esc(data.dataPath)}</code><p>每个自然日首次启动时保存一份自动备份；点击下方“关闭程序”也会生成退出备份。需要迁移时，先关闭程序，再复制整个程序文件夹。</p><a class="btn primary" href="/api/backup" download>${icon('download')}导出完整备份</a><a class="btn" href="/source.pdf#page=40" target="_blank" rel="noopener">${icon('book')}查看题库原文</a></section><section class="panel data-panel"><h2>关于这份题库</h2><p>${esc(data.bank.title)}（2026 版）。题目从印刷第 39 页开始，对应 PDF 第 40 页。共 245 道单选、181 道多选、137 道判断，合计 563 道。保留原题号、六个部分及第六部分的小分类。</p><p>练习中多选题每次选择都即时判定，只有与参考答案完全一致才记为正确。考试不设倒计时和时限；停留在可见的答题页面时累计时间，离开、切换标签或关闭页面时暂停，重新进入后继续。</p><p>本程序用于个人备考，参考答案按用户提供的 PDF 原文录入。未添加原文没有的解析，可随时打开对应原文页核对。</p></section><section class="panel data-panel"><h2>结束本次使用</h2><p>关闭前会保留已保存的记录。下次双击“启动华电题库.cmd”即可重新打开。</p>${button('shutdown','保存并关闭程序','danger')}</section>`;}
+function dataPage(){return heading('数据与备份','所有学习记录保存在本机程序文件夹中，换浏览器也能继续。','本地存储')+`<section class="panel data-panel"><h2>学习记录保存在这里</h2><p>练习的最新答案与分部分统计、考试题序与计时、每场考试的错题，以及错题复习设置，均写入本地数据库。正常退出不会清除记录。</p><code class="path">${esc(data.dataPath)}</code><p>每个自然日首次启动时保存一份自动备份；点击下方“关闭程序”也会生成退出备份。需要迁移时，先关闭程序，再复制整个程序文件夹。</p><a class="btn primary" href="/api/backup" download>${icon('download')}导出完整备份</a><a class="btn" href="/source.pdf#page=40" target="_blank" rel="noopener">${icon('book')}查看题库原文</a></section><section class="panel data-panel"><h2>关于这份题库</h2><p>${esc(data.bank.title)}（2026 版）。题目从印刷第 39 页开始，对应 PDF 第 40 页。共 245 道单选、181 道多选、137 道判断，合计 563 道。保留原题号、六个部分及第六部分的小分类。</p><p>练习中多选题每次选择都即时判定，只有与参考答案完全一致才记为正确。考试不设倒计时和时限；停留在可见的答题页面时累计时间，离开、切换标签或关闭页面时暂停，重新进入后继续。</p><p>本程序用于个人备考，参考答案按用户提供的 PDF 原文录入。未添加原文没有的解析，可随时打开对应原文页核对。</p></section><section class="panel data-panel"><h2>结束本次使用</h2><p>关闭前会保留已保存的记录。下次双击“启动华电题库.cmd”即可重新打开。</p>${button('shutdown','保存并关闭程序','danger')}</section>`;}
 
 function render(){
   if(!data)return;
@@ -227,7 +271,9 @@ async function route(){
       const entries=data.mistakes.filter(m=>m.source===entry.source&&(mistakeFilter==='all'||questions.get(m.qid).type===mistakeFilter));
       if(!entries.some(m=>m.id===entry.id))entries.push(entry);
       quiz={kind:'review',qid:entry.qid,entry,entries,order:entries.map(m=>m.id),practiceSession:entry.source==='practice'?practiceSession:null};
-    }else if(parts[0]==='records'&&parts[1]==='practice')historyData=await api('/api/history?page='+historyPage);
+    }
+    if(parts[0]!=='records'||parts[1]==='practice'){recordEditing=false;selectedExams.clear();}
+    else for(const id of selectedExams)if(!data.exams.some(e=>e.id===id))selectedExams.delete(id);
     if(serial!==routeSerial)return;
     saveLabel='所有选择自动保存';render();
     window.scrollTo(0,0);
@@ -351,8 +397,10 @@ document.addEventListener('click',async event=>{
     else if(action==='confirm-dialog'){const dialog=$('#confirm-dialog'),callback=dialog._callback;target.disabled=true;try{await callback();dialog.close();}catch(e){target.disabled=false;throw e;}}
     else if(action==='records')goto('records/exams');
     else if(action==='open-exam')goto('exam/'+target.dataset.id);
-    else if(action==='record-tab'){historyPage=1;goto('records/'+target.dataset.value);}
-    else if(action==='history-prev'||action==='history-next'){historyPage+=action==='history-prev'?-1:1;historyData=await api('/api/history?page='+historyPage);render();}
+    else if(action==='record-tab')goto('records/'+target.dataset.value);
+    else if(action==='edit-exams')setRecordEditing(true);
+    else if(action==='finish-exams')setRecordEditing(false);
+    else if(action==='delete-exams')requestExamDeletion();
     else if(action==='first-wrong'){const next=quiz.order.find(id=>!quiz.exam.results[id].correct);if(next)jump(next);}
     else if(action==='mistake-tab'){mistakeFilter='all';goto('mistakes/'+target.dataset.value);}
     else if(action==='review')goto('review/'+encodeURIComponent(target.dataset.id));
@@ -366,7 +414,8 @@ document.addEventListener('change',async event=>{
   try{
     if(el.id==='practice-answers-toggle')await togglePracticeAnswers(el.checked);
     else if(el.dataset.setting){data.settings=await api('/api/settings',{key:el.dataset.setting,value:el.checked});setStatus('设置已保存');toast(el.checked?'已开启：之后复习答对的错题会移出':'已关闭：复习答对后仍保留错题');}
-    else if(el.id==='record-filter'){recordFilter=el.value;render();}
+    else if(el.dataset.examSelect)selectExam(el.dataset.examSelect,el.checked);
+    else if(el.id==='record-filter'){recordFilter=el.value;selectedExams.clear();render();$('#record-filter')?.focus({preventScroll:true});}
     else if(el.id==='mistake-filter'){mistakeFilter=el.value;render();}
   }catch(error){el.checked=!el.checked;errorMessage(error);}
 });

@@ -19,7 +19,7 @@ async function harness(mode='practice',type='single'){
   const review=mode.startsWith('review-'),origin=mode==='review-exam'?'exam':'practice';
   const entries=review?ids.map(qid=>({id:origin+':'+(origin==='exam'?'old:':'')+qid,source:origin,qid,
     examId:origin==='exam'?'old':null,original:wrong(qid),review:[],reviewCorrect:null,correctAnswer:null})):[];
-  const db={practice:{},mistakes:entries,settings:{'autoRemove:practice':false,'autoRemove:exam':false},
+  const db={practice:{},mistakes:entries,settings:{'autoRemove:practice':false,'autoRemove:exam':false},exams:[],
     exam:{id:'active',type,status:'active',order:ids,answers:{},elapsed:0,currentQ:ids[0]},history:[]};
   if(review)for(const id of ids)db.practice[id]={answer:wrong(id),correct:false,correctAnswer:correct(id)};
   const timers=new Map(),notices=[],calls=[];let timer=0;
@@ -29,7 +29,13 @@ async function harness(mode='practice',type='single'){
     if(bridge.hold===url){bridge.held.resolve();await bridge.release.promise;bridge.hold=null;}
     if(bridge.fail===url){bridge.fail=null;throw new Error('simulated save failure');}
     if(url==='/api/bootstrap')return clone({token:'test',bank:{...bank,questions:bank.questions.map(({answer,...q})=>q)},
-      practice:db.practice,mistakes:db.mistakes,settings:db.settings,exams:[]});
+      practice:db.practice,mistakes:db.mistakes,settings:db.settings,exams:db.exams});
+    if(url==='/api/exam/delete'){
+      const count=db.exams.filter(e=>payload.ids.includes(e.id)).length;
+      db.exams=db.exams.filter(e=>!payload.ids.includes(e.id));
+      db.mistakes=db.mistakes.filter(m=>!payload.ids.includes(m.examId));
+      return {deletedIds:payload.ids,deletedCount:count};
+    }
     if(url.startsWith('/api/practice/answers?'))return {answers:Object.fromEntries(bank.questions.filter(q=>q.type===url.split('=')[1]).map(q=>[q.id,q.answer]))};
     if(url==='/api/practice'){
       const result=payload.answer.length?{answer:payload.answer,correct:JSON.stringify(payload.answer)===JSON.stringify(correct(payload.qid)),correctAnswer:correct(payload.qid)}:null;
@@ -150,6 +156,85 @@ async function test(name,body){await body();passed++;console.log('ok '+passed+' 
   await test('submitted exam stays locked and never advances',async()=>{
     const h=await harness('exam');h.db.exam.status='submitted';await h.navigate(h.initial);
     await h.choose('A');h.flush();assert.equal(h.ctx.location.hash,h.initial);assert.equal(h.db.history.length,0);
+  });
+  await test('practice statistics use latest ordinary selections and ignore review answers',async()=>{
+    const h=await harness('review-practice');
+    await h.choose(correct('1')[0]);await h.navigate('#/records/practice');
+    assert.deepEqual(h.read('practiceStats(["1","2"])'),{total:2,answered:2,correct:0,accuracy:0});
+    await h.navigate('#/practice/single/1');await h.choose(correct('1')[0]);
+    await h.navigate('#/records/practice');
+    assert.deepEqual(h.read('practiceStats(["1","2"])'),{total:2,answered:2,correct:1,accuracy:50});
+    await h.navigate('#/practice/single/2');await h.run('saveAnswer(null,true)');await h.navigate('#/records/practice');
+    assert.deepEqual(h.read('practiceStats(["1","2"])'),{total:2,answered:1,correct:1,accuracy:100});
+    assert.equal(h.run('accuracyLabel(practiceStats(["246"]))'),'—');
+  });
+  await test('records render all three types and eighteen source parts without choice history',async()=>{
+    const h=await harness();await h.choose(correct('1')[0]);await h.navigate('#/records/practice');
+    const html=h.run('records()');
+    assert.equal((html.match(/data-practice-type=/g)||[]).length,3);
+    assert.equal((html.match(/data-practice-group=/g)||[]).length,18);
+    assert.match(html,/1<small> \/ 563/);assert.match(html,/正确率/);
+    assert.doesNotMatch(html,/历史选择次数|每一次选择|当时选择|当时结果|NaN/);
+    assert.ok(!h.calls.some(c=>c.url.startsWith('/api/history')));
+    for(const type of ['single','multiple','judge']){
+      const rows=bank.groups.filter(g=>g.type===type).map(g=>h.read('practiceStats('+JSON.stringify(bank.questions.filter(q=>q.group===g.id).map(q=>q.id))+')'));
+      const total=h.read('practiceStats(questionIds('+JSON.stringify(type)+'))');
+      for(const key of ['total','answered','correct'])assert.equal(rows.reduce((sum,r)=>sum+r[key],0),total[key]);
+    }
+  });
+  const recordHarness=async()=>{
+    const h=await harness();
+    h.db.exams=[{id:'finished',type:'judge',status:'submitted',total:137,answered:137,score:99.3,wrongCount:1},
+      {id:'active',type:'single',status:'active',total:245,answered:1},
+      {id:'keep',type:'multiple',status:'active',total:181,answered:0}];
+    h.db.mistakes=[{id:'exam:finished:427',source:'exam',examId:'finished',qid:'427'},
+      {id:'practice:1',source:'practice',examId:null,qid:'1'}];
+    h.db.practice['1']={answer:wrong('1'),correct:false};
+    await h.navigate('#/records/exams');return h;
+  };
+  await test('record editor supports selection and Done without deleting anything',async()=>{
+    const h=await recordHarness();const before=clone(h.db);
+    assert.match(h.run('records()'),/data-action="edit-exams"/);
+    assert.doesNotMatch(h.run('records()'),/data-exam-select/);
+    h.run('setRecordEditing(true)');
+    assert.match(h.run('records()'),/data-action="delete-exams" disabled/);
+    h.run('selectExam("finished",true);selectExam("active",true);selectExam("missing",true)');
+    assert.equal(h.read('selectedExams.size'),2);
+    h.run('setRecordEditing(false)');assert.equal(h.read('selectedExams.size'),0);
+    assert.deepEqual(h.db,before);assert.doesNotMatch(h.run('records()'),/data-exam-select/);
+  });
+  await test('deletion waits for confirmation and reports linked mistakes and unfinished exams',async()=>{
+    const h=await recordHarness();h.run('setRecordEditing(true);selectExam("finished",true);selectExam("active",true);requestExamDeletion()');
+    assert.ok(!h.calls.some(c=>c.url==='/api/exam/delete'));
+    assert.match(h.run('$("#dialog-content").innerHTML'),/2 场考试/);
+    assert.match(h.run('$("#dialog-content").innerHTML'),/1 场尚未交卷/);
+    assert.match(h.run('$("#dialog-content").innerHTML'),/对应考试错题/);
+    const original=clone(h.db.practice);await h.run('$("#confirm-dialog")._callback()');
+    assert.deepEqual(h.db.exams.map(e=>e.id),['keep']);
+    assert.deepEqual(h.db.mistakes.map(m=>m.id),['practice:1']);assert.deepEqual(h.db.practice,original);
+    assert.equal(h.read('selectedExams.size'),0);assert.equal(h.read('recordEditing'),true);
+  });
+  await test('failed deletion retains the selected records for retry',async()=>{
+    const h=await recordHarness();h.run('setRecordEditing(true);selectExam("finished",true)');
+    const before=clone(h.db);h.bridge.fail='/api/exam/delete';
+    await assert.rejects(h.run('deleteExamRecords(["finished"])'),/simulated save failure/);
+    assert.deepEqual(h.db,before);assert.equal(h.read('selectedExams.size'),1);assert.equal(h.read('recordDeleting'),false);
+    await h.run('deleteExamRecords(["finished"])');assert.equal(h.db.exams.length,2);
+  });
+  await test('in-flight deletion blocks duplicate requests and selection edits',async()=>{
+    const h=await recordHarness();h.run('setRecordEditing(true);selectExam("finished",true)');
+    h.bridge.hold='/api/exam/delete';const saving=h.run('deleteExamRecords(["finished"])');await h.bridge.held.promise;
+    h.run('selectExam("active",true);setRecordEditing(false)');await h.run('deleteExamRecords(["active"])');
+    assert.equal(h.read('selectedExams.size'),1);assert.equal(h.read('recordEditing'),true);
+    h.bridge.release.resolve();await saving;
+    assert.equal(h.calls.filter(c=>c.url==='/api/exam/delete').length,1);assert.ok(h.db.exams.some(e=>e.id==='active'));
+  });
+  await test('leaving records exits editing and stale selections cannot delete hidden records',async()=>{
+    const h=await recordHarness();h.run('setRecordEditing(true);selectExam("active",true)');
+    await h.navigate('#/records/practice');assert.equal(h.read('recordEditing'),false);assert.equal(h.read('selectedExams.size'),0);
+    await h.navigate('#/records/exams');h.run('recordFilter="submitted";setRecordEditing(true);selectExam("active",true)');
+    assert.equal(h.read('selectedExams.size'),0);h.run('requestExamDeletion()');
+    assert.ok(!h.calls.some(c=>c.url==='/api/exam/delete'));
   });
   console.log('\n'+passed+' frontend acceptance checks passed.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

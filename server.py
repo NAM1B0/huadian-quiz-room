@@ -136,7 +136,6 @@ class Store:
                     dismissed=0,updated=excluded.updated""", (mid, "practice", qid, dumps(answer), now(), now()))
             else:
                 db.execute("UPDATE mistakes SET dismissed=1,updated=? WHERE id=?", (now(), "practice:" + qid))
-            self.event(db, "practice", qid, answer, correct)
             return self.practice_map(db).get(qid)
 
     @staticmethod
@@ -191,6 +190,24 @@ class Store:
     def exam(self, eid):
         with self.connect() as db:
             return self.exam_info(self.get_row(db, eid), True)
+
+    def delete_exams(self, ids):
+        if (not isinstance(ids, list) or not 1 <= len(ids) <= 1000
+                or any(not isinstance(eid, str) or not eid or len(eid) > 128 for eid in ids)):
+            raise UserError("请选择要删除的考试记录，每次最多 1000 场。")
+        ids = list(dict.fromkeys(ids))
+        placeholders = ",".join("?" for _ in ids)
+        with self.connect() as db:
+            count = db.execute(f"SELECT COUNT(*) FROM exams WHERE id IN ({placeholders})", ids).fetchone()[0]
+            if count:
+                # Keep a recoverable snapshot before the atomic delete, including active exams.
+                backup = self.directory / "自动备份" / ("删除考试前-" + datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:8] + ".sqlite3")
+                self.backup(backup)
+                db.execute(f"DELETE FROM mistakes WHERE exam_id IN ({placeholders})", ids)
+                db.execute(f"DELETE FROM events WHERE exam_id IN ({placeholders})", ids)
+                db.execute(f"DELETE FROM exams WHERE id IN ({placeholders})", ids)
+        # Retrying an already completed request is harmless.
+        return {"deletedIds": ids, "deletedCount": count}
 
     def save_exam(self, eid, qid, answer):
         qid = str(qid)
@@ -280,7 +297,6 @@ class Store:
             setting = db.execute("SELECT value FROM settings WHERE key=?", ("autoRemove:" + row["source"],)).fetchone()
             removed = bool(correct and setting and json.loads(setting["value"]))
             db.execute("UPDATE mistakes SET review=?,review_correct=?,dismissed=?,updated=? WHERE id=?", (dumps(answer), correct, removed, now(), mid))
-            self.event(db, "review-" + row["source"], row["qid"], answer, correct, row["exam_id"])
             return {"answer": answer, "correct": correct, "correctAnswer": QUESTIONS[row["qid"]]["answer"] if answer else None, "removed": removed}
 
     def settings(self, key=None, value=None):
@@ -290,12 +306,6 @@ class Store:
                     raise UserError("无效设置。")
                 db.execute("INSERT OR REPLACE INTO settings VALUES(?,?)", (key, dumps(value)))
             return {row["key"]: json.loads(row["value"]) for row in db.execute("SELECT * FROM settings")}
-
-    def history(self, page=1):
-        with self.connect() as db:
-            count = db.execute("SELECT COUNT(*) FROM events WHERE scope IN ('practice','review-practice','review-exam')").fetchone()[0]
-            rows = db.execute("SELECT * FROM events WHERE scope IN ('practice','review-practice','review-exam') ORDER BY id DESC LIMIT 30 OFFSET ?", ((max(page, 1) - 1) * 30,)).fetchall()
-            return {"total": count, "page": page, "items": [{**dict(r), "answer": json.loads(r["answer"])} for r in rows]}
 
     def bootstrap(self):
         with self.connect() as db:
@@ -355,9 +365,6 @@ class Handler(BaseHTTPRequestHandler):
                 return self.respond({"answers": {q["id"]: q["answer"] for q in BANK["questions"] if q["type"] == kind}})
             if path.startswith("/api/exam/"):
                 return self.respond(store.exam(path.rsplit("/", 1)[-1]))
-            if path == "/api/history":
-                page = int(urllib.parse.parse_qs(url.query).get("page", [1])[0])
-                return self.respond(store.history(page))
             if path == "/api/backup":
                 target = store.directory / ("导出备份-" + uuid.uuid4().hex + ".sqlite3")
                 try:
@@ -409,6 +416,8 @@ class Handler(BaseHTTPRequestHandler):
                 result = store.tick(p["id"], str(p["owner"]), bool(p.get("active", True)))
             elif route == "/api/exam/submit":
                 result = store.submit(p["id"])
+            elif route == "/api/exam/delete":
+                result = store.delete_exams(p["ids"])
             elif route == "/api/review":
                 result = store.review(p["id"], p["answer"])
             elif route == "/api/settings":

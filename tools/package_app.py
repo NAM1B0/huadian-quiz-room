@@ -6,7 +6,7 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "1.0.3"
+VERSION = "1.0.4"
 FILES = ("server.py", "bank.json", "launch.ps1", "启动华电题库.cmd", "使用说明.txt",
          "README.md", "LICENSE", "THIRD_PARTY_NOTICES.md")
 
