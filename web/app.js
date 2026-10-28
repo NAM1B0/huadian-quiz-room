@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "1.0.2";
+const APP_VERSION = "1.0.3";
 const $ = s => document.querySelector(s);
 const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const labels = {single:"单选题", multiple:"多选题", judge:"判断题"};
@@ -33,6 +33,7 @@ const owner = crypto.randomUUID();
 const pendingAnswers = new Map();
 let saveCount = 0, choiceRevision = 0;
 let practiceSession = null;
+let autoAdvanceTimer = null;
 
 async function api(path, payload){
   const response = await fetch(path, payload === undefined ? {cache:"no-store"} : {method:"POST", keepalive:true, headers:{"Content-Type":"application/json","X-App-Token":token || ""},body:JSON.stringify(payload)});
@@ -96,7 +97,7 @@ function quizPage(){
   const s=answerState(key), active=quiz.kind==='exam'&&quiz.exam.status==='active', locked=(quiz.kind==='exam'&&!active)||s.removed;
   const modeLabel=quiz.kind==='practice'?'练习模式':quiz.kind==='review'?'错题复习':active?'考试模式':'考试回顾';
   const answered=quiz.order.filter(id=>answerState(id).answer?.length).length;
-  const previewAnswers=quiz.kind==='practice'&&quiz.practiceSession.showAnswers?quiz.practiceSession.answers?.[q.id]:null;
+  const previewAnswers=quiz.practiceSession?.showAnswers?quiz.practiceSession.answers?.[q.id]:null;
   const correctAnswer=previewAnswers||s.correctAnswer;
   const revealed=!active&&correctAnswer?.length&&(s.answer.length||previewAnswers);
   const itemIndex=quiz.order.indexOf(key);
@@ -110,25 +111,27 @@ function quizPage(){
   }else if(active&&s.answer.length){feedback=`<div class="feedback neutral" role="status">${icon('check')}<div><strong>答案已保存</strong><p>交卷前可以随时更改选择，交卷后统一显示对错。</p></div></div>`;}
   const reviewBar=quiz.kind==='review'?`<div class="panel review-toolbar"><span class="muted">${quiz.entry.source==='practice'?'来自正常练习的最新错题':`来自第 ${examNumber(quiz.entry.examId)} 场 · ${fmtDate(quiz.entry.examCreated)} 的考试`} · 原选择 ${choiceString(quiz.entry.original)}</span>${switchControl(quiz.entry.source)}</div>`:'';
   const result=quiz.kind==='exam'&&!active?`<div class="panel result-strip"><div class="result-score mono">${quiz.exam.score}<small> / 100</small></div><div class="result-details"><strong>考试已完成，答案已锁定</strong>正确 ${quiz.exam.correctCount} 题 · 错误 ${quiz.exam.wrongCount} 题 · 用时 ${duration(quiz.exam.elapsed)}<br>${fmtDate(quiz.exam.submitted)} 交卷 · 按每题等权折算，非官方评分</div><span class="spacer"></span>${button('records','查看全部记录','small')}</div>`:'';
-  return `<div class="quiz-head"><div class="quiz-title"><span class="eyebrow">${modeLabel}</span><h1>${labels[q.type]} <span class="muted">/</span> ${g.title}</h1><p>${g.part} · ${quiz.kind==='review'?'保留原题号，按错题来源复习':active?'题目仅在各部分内部打乱，题号沿用原题库':quiz.kind==='exam'?'保持本场考试的题目顺序，答案已锁定':'按原题库顺序练习'}</p></div>${quiz.kind==='exam'?`<div class="timer">${icon('clock')}<div><small>${active?'累计答题时间':'本场用时'}</small><strong class="mono" id="timer">${duration(quiz.exam.elapsed)}</strong></div></div>`:button(quiz.kind==='review'?'back-mistakes':'home',`${icon('back')}返回`,'small ghost')}</div>${result}${reviewBar}${quiz.kind==='practice'?practiceAnswerControl():''}<div class="quiz-layout"><div class="question-column"><article class="panel question-card"><div class="question-meta"><div class="row"><span class="pill blue">${labels[q.type]}</span><span class="small muted">题库第 <b class="mono">${q.number}</b> 题</span></div><span class="small muted mono">${itemIndex+1} / ${quiz.order.length}</span></div>${q.subsection?`<div class="subsection">${esc(q.subsection)}</div>`:''}<h2 class="question-text">${esc(q.text)}</h2><p class="question-hint">${q.type==='multiple'?'本题为多选题，请选择所有正确选项；再次点击可取消。':'请选择一个答案。'}${locked?(quiz.kind==='exam'?' 本场已交卷，答案不可修改。':' 本条错题已移出，复习记录已保存。'):''}</p><div class="options ${q.type==='multiple'?'multiple-options':''}" role="group" aria-label="答案选项">${q.options.map(o=>{
+  return `<div class="quiz-head"><div class="quiz-title"><span class="eyebrow">${modeLabel}</span><h1>${labels[q.type]} <span class="muted">/</span> ${g.title}</h1><p>${g.part} · ${quiz.kind==='review'?'保留原题号，按错题来源复习':active?'题目仅在各部分内部打乱，题号沿用原题库':quiz.kind==='exam'?'保持本场考试的题目顺序，答案已锁定':'按原题库顺序练习'}</p></div>${quiz.kind==='exam'?`<div class="timer">${icon('clock')}<div><small>${active?'累计答题时间':'本场用时'}</small><strong class="mono" id="timer">${duration(quiz.exam.elapsed)}</strong></div></div>`:button(quiz.kind==='review'?'back-mistakes':'home',`${icon('back')}返回`,'small ghost')}</div>${result}${reviewBar}${quiz.practiceSession?practiceAnswerControl():''}<div class="quiz-layout"><div class="question-column"><article class="panel question-card"><div class="question-meta"><div class="row"><span class="pill blue">${labels[q.type]}</span><span class="small muted">题库第 <b class="mono">${q.number}</b> 题</span></div><span class="small muted mono">${itemIndex+1} / ${quiz.order.length}</span></div>${q.subsection?`<div class="subsection">${esc(q.subsection)}</div>`:''}<h2 class="question-text">${esc(q.text)}</h2><p class="question-hint">${q.type==='multiple'?'本题为多选题，请选择所有正确选项；再次点击可取消。':'请选择一个答案。'}${locked?(quiz.kind==='exam'?' 本场已交卷，答案不可修改。':' 本条错题已移出，复习记录已保存。'):' '+advanceHint(quiz,q)}</p><div class="options ${q.type==='multiple'?'multiple-options':''}" role="group" aria-label="答案选项">${q.options.map(o=>{
     const selected=s.answer.includes(o.key), correct=revealed&&correctAnswer.includes(o.key), wrong=revealed&&selected&&!correct;
     return `<button class="option ${selected?'selected':''} ${correct?'correct-option':''} ${wrong?'wrong-option':''}" data-action="choose" data-choice="${o.key}" aria-pressed="${selected}" aria-label="${o.key}：${esc(o.text)}" ${locked?'disabled':''}><span class="choice-key">${o.key}</span><span>${esc(o.text)}</span>${selected?'<span class="option-tail">已选</span>':''}</button>`;
   }).join('')}</div>${feedback}<div class="question-foot"><span>来源：原题库第 ${q.printedPage}${q.pdfEndPage!==q.pdfPage?'–'+(q.pdfEndPage-1):''} 页 · 答案以原文为准</span><div class="row">${!locked&&s.answer.length?button('clear-answer','清除本题选择','small ghost'):''}${!active?`<a href="/source.pdf#page=${q.pdfPage}" target="_blank" rel="noopener">核对原文 ↗</a>`:''}</div></div></article><div class="quiz-controls">${button('previous',`${icon('back')}上一题`,'',itemIndex<=0?'disabled':'')}<div class="right">${(quiz.kind==='practice'||active)?button('next-unanswered','下一道未答','ghost'):''}${button('next',`下一题${icon('arrow')}`,'primary',itemIndex>=quiz.order.length-1?'disabled':'')}</div></div><p class="key-help">快捷键：数字或 A–F 选择选项，← / → 切换题目</p></div>${answerBoard(answered,key,active)}</div>`;
 }
 function practiceAnswerControl(){
   const session=quiz.practiceSession;
-  const hint=session.error|| (session.loading&&session.showAnswers?'正在读取本套参考答案…':session.showAnswers?'已显示本套所有题目的参考答案，查看不会改变作答记录。':'每次进入默认关闭；关闭时，作答后仍会照常显示对错。');
+  const scope=quiz.kind==='review'?'本组练习错题':'本套所有题目';
+  const hint=session.error|| (session.loading&&session.showAnswers?'正在读取参考答案…':session.showAnswers?`已显示${scope}的参考答案，查看不会改变作答记录。`:'每次进入默认关闭；关闭时，作答后仍会照常显示对错。');
   return `<div class="panel review-toolbar"><label class="switch-wrap"><input id="practice-answers-toggle" type="checkbox" role="switch" aria-describedby="practice-answers-help" ${session.showAnswers?'checked':''}><span>显示整套正确答案</span></label><span id="practice-answers-help" class="small muted" role="status">${esc(hint)}</span></div>`;
 }
 async function togglePracticeAnswers(show){
-  if(quiz?.kind!=='practice')return;
+  if(!quiz?.practiceSession)return;
   const session=quiz.practiceSession;
+  const types=quiz.kind==='practice'?[quiz.type]:Object.keys(labels);
   session.showAnswers=show;session.error='';
   if(!show||session.answers||session.loading){render();$('#practice-answers-toggle')?.focus({preventScroll:true});return;}
   session.loading=true;render();
   try{
-    const result=await api('/api/practice/answers?type='+encodeURIComponent(session.type));
-    session.answers=result.answers;
+    const results=await Promise.all(types.map(type=>api('/api/practice/answers?type='+encodeURIComponent(type))));
+    session.answers=Object.assign({},...results.map(result=>result.answers));
   }catch(error){
     if(session.showAnswers)session.error='读取答案失败：'+error.message+' 请重新打开开关重试。';
     session.showAnswers=false;
@@ -194,11 +197,13 @@ window.addEventListener('pagehide',beaconPause);
 window.addEventListener('beforeunload',event=>{if(saveCount>0){event.preventDefault();event.returnValue='';}});
 
 async function route(){
+  cancelAutoAdvance();
   const serial=++routeSerial;
   const next=location.hash.replace(/^#\/?/,'').split('/').filter(Boolean).map(decodeURIComponent);
   const practiceType=next[0]==='practice'?(labels[next[1]]?next[1]:'single'):null;
-  if(practiceSession?.type!==practiceType)practiceSession=null;
-  if(practiceType&&!practiceSession)practiceSession={type:practiceType,showAnswers:false,answers:null,loading:false,error:''};
+  const previewScope=practiceType?'practice:'+practiceType:next[0]==='review'&&next[1]?.startsWith('practice:')?'review:practice:'+mistakeFilter:null;
+  if(practiceSession?.scope!==previewScope)practiceSession=null;
+  if(previewScope&&!practiceSession)practiceSession={scope:previewScope,showAnswers:false,answers:null,loading:false,error:''};
   await savePromise.catch(()=>{});
   if(timerId&&(next[0]!=='exam'||next[1]!==timerId))await stopTimer();
   try{
@@ -221,7 +226,7 @@ async function route(){
       if(!entry){goto('mistakes/'+(parts[1]?.startsWith('exam:')?'exam':'practice'));return;}
       const entries=data.mistakes.filter(m=>m.source===entry.source&&(mistakeFilter==='all'||questions.get(m.qid).type===mistakeFilter));
       if(!entries.some(m=>m.id===entry.id))entries.push(entry);
-      quiz={kind:'review',qid:entry.qid,entry,entries,order:entries.map(m=>m.id)};
+      quiz={kind:'review',qid:entry.qid,entry,entries,order:entries.map(m=>m.id),practiceSession:entry.source==='practice'?practiceSession:null};
     }else if(parts[0]==='records'&&parts[1]==='practice')historyData=await api('/api/history?page='+historyPage);
     if(serial!==routeSerial)return;
     saveLabel='所有选择自动保存';render();
@@ -243,15 +248,56 @@ function jump(key){
   else if(quiz.kind==='exam')goto('exam/'+quiz.exam.id+'/'+key);
   else goto('review/'+encodeURIComponent(key));
 }
+function advanceRule(context,question){
+  if(context.kind==='practice')return 'correct';
+  if(question.type==='multiple')return 'manual';
+  if(context.kind==='exam')return context.exam.status==='active'?'answered':'manual';
+  return context.entry.source==='practice'?'correct':'answered';
+}
+function advanceHint(context,question){
+  const rule=advanceRule(context,question);
+  if(context.order.at(-1)===(context.kind==='review'?context.entry.id:question.id))return '本题为最后一题，选择会自动保存。';
+  if(rule==='correct')return '选对后自动进入下一题。';
+  if(rule==='answered')return '选择后自动进入下一题，可通过题号返回修改。';
+  return context.kind==='exam'&&context.exam.status!=='active'?'':'选完后请手动点击“下一题”。';
+}
+function cancelAutoAdvance(){clearTimeout(autoAdvanceTimer);autoAdvanceTimer=null;}
+function scheduleAutoAdvance(context,key,revision,serial,hash){
+  const rule=advanceRule(context,questions.get(context.qid));
+  if(rule==='manual')return;
+  const ready=()=>{
+    if(quiz!==context||routeSerial!==serial||location.hash!==hash||choiceRevision!==revision||saveCount||lastError)return false;
+    const state=answerState(key);
+    return !state.pending&&state.answer.length>0&&(rule==='answered'||state.correct===true);
+  };
+  if(!ready())return;
+  cancelAutoAdvance();
+  autoAdvanceTimer=setTimeout(()=>{
+    autoAdvanceTimer=null;
+    if(!ready())return;
+    const next=context.order.slice(context.order.indexOf(key)+1).find(id=>context.kind!=='review'||data.mistakes.some(m=>m.id===id));
+    if(next)jump(next);
+    else{
+      if(context.kind==='review'&&context.entry.removed)goto('mistakes/'+context.entry.source);
+      toast(context.kind==='exam'?'本题已保存，已到最后一题；检查后可手动交卷。':'本题已保存，已到最后一题。');
+    }
+  },350);
+}
 async function saveAnswer(choice,clear=false){
+  cancelAutoAdvance();
   if(!quiz)return;
   const q=questions.get(quiz.qid),key=quiz.kind==='review'?quiz.entry.id:q.id,s=answerState(key);
   if((quiz.kind==='exam'&&quiz.exam.status!=='active')||s.removed)return;
   let answer=clear?[]:q.type==='multiple'?(s.answer.includes(choice)?s.answer.filter(x=>x!==choice):[...s.answer,choice].sort()):[choice];
-  if(JSON.stringify(answer)===JSON.stringify(s.answer)&&!(quiz.kind==='review'&&s.correct&&data.settings['autoRemove:'+quiz.entry.source]))return;
-  const context=quiz,saveKey=choiceToken(context,key),revision=++choiceRevision;
+  const context=quiz,serial=routeSerial,hash=location.hash;
+  if(JSON.stringify(answer)===JSON.stringify(s.answer)&&!lastError&&!(quiz.kind==='review'&&s.correct&&data.settings['autoRemove:'+quiz.entry.source])){
+    if(!clear)scheduleAutoAdvance(context,key,choiceRevision,serial,hash);
+    return;
+  }
+  const saveKey=choiceToken(context,key),revision=++choiceRevision;
   pendingAnswers.set(saveKey,{answer,revision});saveCount++;busy=true;lastError='';saveLabel='正在保存…';render();
   savePromise=savePromise.catch(()=>{}).then(async()=>{
+    let saved=false;
     try{
       if(context.kind==='practice'){
         const result=await api('/api/practice',{qid:q.id,answer});
@@ -263,16 +309,18 @@ async function saveAnswer(choice,clear=false){
         Object.assign(context.entry,{review:answer,reviewCorrect:result.correct,correctAnswer:result.correctAnswer,removed:result.removed});
         if(result.removed){data.mistakes=data.mistakes.filter(m=>m.id!==context.entry.id);toast('已移出这条错题，原始做题记录仍保留');}
       }
-      saveLabel='已保存到本机';
+      saveLabel='已保存到本机';saved=true;
     }catch(error){lastError=error.message;saveLabel='本次选择保存失败';toast(lastError);}
     finally{
       if(pendingAnswers.get(saveKey)?.revision===revision)pendingAnswers.delete(saveKey);
       saveCount--;busy=saveCount>0;if(busy)saveLabel='正在保存…';render();
     }
+    if(saved&&!clear)scheduleAutoAdvance(context,key,revision,serial,hash);
   });
   await savePromise;
 }
 function confirmDialog(title,body,confirmText,callback){
+  cancelAutoAdvance();
   const dialog=$('#confirm-dialog');
   $('#dialog-content').innerHTML=`<h2 id="dialog-title">${title}</h2><p>${body}</p><div class="row">${button('cancel-dialog','返回检查')}${button('confirm-dialog',confirmText,'primary')}</div>`;
   dialog.showModal();dialog._callback=callback;

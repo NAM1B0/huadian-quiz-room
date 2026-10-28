@@ -6,7 +6,7 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "1.0.2"
+VERSION = "1.0.3"
 FILES = ("server.py", "bank.json", "launch.ps1", "启动华电题库.cmd", "使用说明.txt",
          "README.md", "LICENSE", "THIRD_PARTY_NOTICES.md")
 
@@ -23,7 +23,7 @@ def main():
     paths = [(ROOT / name, name) for name in FILES]
     for folder, suffixes in (("web", {".js", ".html", ".css", ".svg"}),
                              ("source", {".pdf"}), ("docs", {".png"}),
-                             ("tools", {".py", ".json"})):
+                             ("tools", {".py", ".js", ".json"})):
         paths.extend((p, p.relative_to(ROOT).as_posix()) for p in (ROOT / folder).rglob("*")
                      if p.is_file() and p.suffix in suffixes and "__pycache__" not in p.parts)
     paths.extend((p, "runtime/" + p.relative_to(runtime).as_posix()) for p in runtime.rglob("*")
