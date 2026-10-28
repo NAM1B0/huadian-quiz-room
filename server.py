@@ -348,6 +348,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self.respond({"app": APP_ID, "root": str(ROOT), "dataPath": str(store.path)})
             if path == "/api/bootstrap":
                 return self.respond({**store.bootstrap(), "token": self.server.token})
+            if path == "/api/practice/answers":
+                kind = urllib.parse.parse_qs(url.query).get("type", [""])[0]
+                if kind not in TYPES:
+                    raise UserError("请选择有效的练习题型。")
+                return self.respond({"answers": {q["id"]: q["answer"] for q in BANK["questions"] if q["type"] == kind}})
             if path.startswith("/api/exam/"):
                 return self.respond(store.exam(path.rsplit("/", 1)[-1]))
             if path == "/api/history":

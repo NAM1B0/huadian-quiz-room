@@ -176,6 +176,38 @@ class Acceptance(unittest.TestCase):
         self.assertEqual(restored.bootstrap()["practice"], self.store.bootstrap()["practice"])
         self.assertEqual(restored.exam(exam["id"])["answers"], {"246": ["A"]})
 
+    def test_practice_answer_preview_is_complete_read_only_and_separate_from_exam(self):
+        self.store.save_practice("1", wrong("1"))
+        exam = self.store.start_exam("multiple")
+        self.store.save_exam(exam["id"], "246", ["A"])
+        before = (self.store.bootstrap(), self.store.history(), self.store.exam(exam["id"]))
+        server = Server(("127.0.0.1", 0), self.store)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        base = f"http://127.0.0.1:{server.server_port}"
+        try:
+            for kind, count in (("single", 245), ("multiple", 181), ("judge", 137)):
+                with urllib.request.urlopen(base + "/api/practice/answers?type=" + kind) as response:
+                    answers = json.load(response)["answers"]
+                self.assertEqual(len(answers), count)
+                self.assertEqual(answers, {q["id"]: q["answer"] for q in BANK["questions"] if q["type"] == kind})
+            for suffix in ("", "?type=all", "?type=unknown"):
+                with self.assertRaises(urllib.error.HTTPError) as context:
+                    urllib.request.urlopen(base + "/api/practice/answers" + suffix)
+                self.assertEqual(context.exception.code, 400)
+            self.assertEqual(before, (self.store.bootstrap(), self.store.history(), self.store.exam(exam["id"])))
+            with urllib.request.urlopen(base + "/api/bootstrap") as response:
+                public = json.load(response)
+            self.assertTrue(all("answer" not in q for q in public["bank"]["questions"]))
+            with urllib.request.urlopen(base + "/api/exam/" + exam["id"]) as response:
+                active_exam = json.load(response)
+            self.assertNotIn("results", active_exam)
+            self.assertNotIn("correctAnswer", json.dumps(active_exam))
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
+
     def test_http_api_and_security_boundary(self):
         server = Server(("127.0.0.1", 0), self.store)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
