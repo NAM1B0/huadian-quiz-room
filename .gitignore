@@ -1,0 +1,22 @@
+# Personal study data and backups
+/data/
+/qa/
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
+*.log
+__pycache__/
+*.py[cod]
+.venv/
+.env
+.env.*
+# Generated runtimes, packages and extraction scratch files
+/runtime/
+/dist/
+/build/
+*.zip
+/tools/extraction/source-text.txt
+/tools/extraction/poppler.txt
+.DS_Store
+Thumbs.db

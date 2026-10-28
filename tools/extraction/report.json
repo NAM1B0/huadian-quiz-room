@@ -1,0 +1,143 @@
+{
+  "total": 563,
+  "byType": {
+    "single": 245,
+    "multiple": 181,
+    "judge": 137
+  },
+  "groups": [
+    {
+      "id": "single-1",
+      "type": "single",
+      "part": "第一部分",
+      "title": "形势政策",
+      "count": 80
+    },
+    {
+      "id": "single-2",
+      "type": "single",
+      "part": "第二部分",
+      "title": "企业文化",
+      "count": 33
+    },
+    {
+      "id": "single-3",
+      "type": "single",
+      "part": "第三部分",
+      "title": "公司概况",
+      "count": 23
+    },
+    {
+      "id": "single-4",
+      "type": "single",
+      "part": "第四部分",
+      "title": "新型电力系统",
+      "count": 44
+    },
+    {
+      "id": "single-5",
+      "type": "single",
+      "part": "第五部分",
+      "title": "品牌建设",
+      "count": 6
+    },
+    {
+      "id": "single-6",
+      "type": "single",
+      "part": "第六部分",
+      "title": "电力基础知识",
+      "count": 59
+    },
+    {
+      "id": "multiple-1",
+      "type": "multiple",
+      "part": "第一部分",
+      "title": "形势政策",
+      "count": 46
+    },
+    {
+      "id": "multiple-2",
+      "type": "multiple",
+      "part": "第二部分",
+      "title": "企业文化",
+      "count": 15
+    },
+    {
+      "id": "multiple-3",
+      "type": "multiple",
+      "part": "第三部分",
+      "title": "公司概况",
+      "count": 15
+    },
+    {
+      "id": "multiple-4",
+      "type": "multiple",
+      "part": "第四部分",
+      "title": "新型电力系统",
+      "count": 59
+    },
+    {
+      "id": "multiple-5",
+      "type": "multiple",
+      "part": "第五部分",
+      "title": "品牌建设",
+      "count": 12
+    },
+    {
+      "id": "multiple-6",
+      "type": "multiple",
+      "part": "第六部分",
+      "title": "电力系统基础知识",
+      "count": 34
+    },
+    {
+      "id": "judge-1",
+      "type": "judge",
+      "part": "第一部分",
+      "title": "形势政策",
+      "count": 36
+    },
+    {
+      "id": "judge-2",
+      "type": "judge",
+      "part": "第二部分",
+      "title": "企业文化",
+      "count": 11
+    },
+    {
+      "id": "judge-3",
+      "type": "judge",
+      "part": "第三部分",
+      "title": "公司概况",
+      "count": 16
+    },
+    {
+      "id": "judge-4",
+      "type": "judge",
+      "part": "第四部分",
+      "title": "新型电力系统",
+      "count": 39
+    },
+    {
+      "id": "judge-5",
+      "type": "judge",
+      "part": "第五部分",
+      "title": "品牌建设",
+      "count": 5
+    },
+    {
+      "id": "judge-6",
+      "type": "judge",
+      "part": "第六部分",
+      "title": "电力系统基础知识",
+      "count": 30
+    }
+  ],
+  "checks": [
+    "563 道题连续编号，无重复和遗漏",
+    "18 个分组",
+    "全部题目具有题干、连续选项和有效答案",
+    "单选及判断答案为 1 项，多选答案至少 2 项",
+    "PDF 跨页题目合并并保留起止页码"
+  ]
+}
