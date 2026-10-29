@@ -4,7 +4,7 @@
 
 ## 安装
 
-本目录的构建产物 `huadian-quiz-room-v1.0.4-ios26.ipa` 是 arm64 iOS 应用，未使用开发者证书签名，需要用户自行重签，系统须为 iOS 26 或更新版本。
+从 [iOS v1.0.4 下载页](https://github.com/NAM1B0/huadian-quiz-room/releases/tag/v1.0.4-ios) 获取 `huadian-quiz-room-v1.0.4-ios26.ipa`。这是 arm64 iOS 应用，未使用开发者证书签名，需要用户自行重签，系统须为 iOS 26 或更新版本。
 
 1. 在电脑按 [AltStore Classic 官方教程](https://faq.altstore.io/altstore-classic/altserver) 安装 AltServer，并在 iPhone 上安装 AltStore Classic。
 2. 将 IPA 保存到 iPhone 的“文件”应用，在 AltStore Classic 的 My Apps 中点 `+` 选择它，使用自己的 Apple 账户完成侧载。
@@ -48,5 +48,7 @@ open ios/HuadianQuiz.xcodeproj
 项目包含应用、单元测试与原生 UI 测试，不使用第三方依赖。应用标识为 `io.github.nam1b0.huadianquiz`，版本 1.0.4，构建号 10401。真机开发可在 Xcode 选择自己的 Team；CI 使用 `CODE_SIGNING_ALLOWED=NO`。
 
 GitHub Actions 的 `iOS 26 build and phone checks` 工作流在 macOS 上创建 iPhone 13 Pro 模拟器，执行数据逻辑与 UI 测试、导出原生截图，最后归档 arm64 真机应用并生成 IPA、SHA-256 和构建信息。仅在编译及测试成功后才上传 IPA。模拟器验证不能替代实体 iPhone 上的侧载和使用验证。
+
+本次交付的测试版本、结果和截图见 [验证记录](TESTING.md)。发布的 IPA 已统一 ZIP 中文文件名的 UTF-8 标记，应用内文件与通过测试的 Xcode 归档完全一致。
 
 源码许可沿用仓库 LICENSE；题库与 PDF 的权利归原权利人所有。

@@ -3,9 +3,10 @@ from pathlib import Path
 import hashlib
 import json
 import plistlib
-import shutil
+import os
 import subprocess
 import sys
+import zipfile
 
 archive, output = map(Path, sys.argv[1:3])
 app = archive / "Products/Applications/HuadianQuiz.app"
@@ -23,11 +24,21 @@ assert len(bank["questions"]) == 563 and len(bank["groups"]) == 18
 assert (app / "题库原文.pdf").is_file()
 assert not list(app.rglob("*.sqlite3")) and not list(app.rglob("study.json")), "Personal data must not ship"
 output.mkdir(parents=True, exist_ok=True)
-staging = output / "staging" / "Payload"
-staging.mkdir(parents=True, exist_ok=True)
-shutil.copytree(app, staging / app.name)
 ipa = output / "huadian-quiz-room-v1.0.4-ios26.ipa"
-subprocess.run(["/usr/bin/ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", str(staging), str(ipa)], check=True)
+# zipfile sets the ZIP UTF-8 flag for Chinese resource names. Some macOS
+# archivers omit it, causing sideload extractors to rename the bundled PDF.
+with zipfile.ZipFile(ipa, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as package:
+    package.write(app.parent, "Payload")
+    package.write(app, "Payload/" + app.name)
+    for path in sorted(app.rglob("*")):
+        name = "Payload/" + path.relative_to(app.parent).as_posix()
+        if path.is_symlink():
+            entry = zipfile.ZipInfo(name)
+            entry.create_system = 3
+            entry.external_attr = path.lstat().st_mode << 16
+            package.writestr(entry, os.readlink(path))
+        else:
+            package.write(path, name)
 digest = hashlib.sha256(ipa.read_bytes()).hexdigest()
 (output / (ipa.name + ".sha256")).write_text(digest + "  " + ipa.name + "\n")
 (output / "build-info.json").write_text(json.dumps({"version": info["CFBundleShortVersionString"], "build": info["CFBundleVersion"], "minimumOS": info["MinimumOSVersion"], "sdk": info["DTSDKName"], "bundleID": info["CFBundleIdentifier"], "architecture": "arm64", "signing": "Unsigned; re-sign with AltStore Classic", "sha256": digest}, indent=2))
