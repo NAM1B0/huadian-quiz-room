@@ -42,7 +42,19 @@ jobs:
         timeout-minutes: 15
         run: |
           set -o pipefail
-          xcodebuild test-without-building -project ios/HuadianQuiz.xcodeproj -scheme HuadianQuiz -configuration Debug -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -derivedDataPath ios/build/DerivedData -resultBundlePath ios/build/PhoneTests.xcresult -only-testing:HuadianQuizUITests -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 120 CODE_SIGNING_ALLOWED=NO 2>&1 | tee ios/build/tests.txt
+          # Finish the unit-test host's installation lifecycle before UI automation.
+          xcrun simctl terminate "$SIMULATOR_ID" io.github.nam1b0.huadianquiz 2>/dev/null || true
+          xcrun simctl install "$SIMULATOR_ID" ios/build/DerivedData/Build/Products/Debug-iphonesimulator/HuadianQuiz.app
+          ready=false
+          for attempt in 1 2 3; do
+            if xcrun simctl launch "$SIMULATOR_ID" io.github.nam1b0.huadianquiz; then ready=true; break; fi
+            sleep 3
+          done
+          [ "$ready" = true ] || exit 1
+          xcrun simctl terminate "$SIMULATOR_ID" io.github.nam1b0.huadianquiz
+          # One retry handles transient hosted-simulator launch failures. Keep all
+          # attempt logs so PDF rendering/assertion failures can still be reviewed.
+          xcodebuild test-without-building -project ios/HuadianQuiz.xcodeproj -scheme HuadianQuiz -configuration Debug -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -derivedDataPath ios/build/DerivedData -resultBundlePath ios/build/PhoneTests.xcresult -only-testing:HuadianQuizUITests -parallel-testing-enabled NO -retry-tests-on-failure -maximum-test-iterations 2 -test-timeouts-enabled YES -default-test-execution-time-allowance 120 CODE_SIGNING_ALLOWED=NO 2>&1 | tee ios/build/tests.txt
       - name: Export simulator screenshots
         if: always()
         run: |

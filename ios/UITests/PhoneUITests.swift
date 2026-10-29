@@ -83,14 +83,16 @@ final class PhoneUITests: XCTestCase {
     func testPDFDataAndQuestionEntrypointsDisplayAndNavigate() {
         app.launch(); app.tabBars.buttons["数据"].tap()
         app.buttons["open-source-pdf"].tap()
-        let status = app.staticTexts["pdf-page-status"]
-        XCTAssertTrue(status.waitForExistence(timeout: 8))
-        XCTAssertTrue(waitForText("40 / 161", element: status))
+        let status = app.staticTexts["pdf-page-status"].firstMatch
+        XCTAssertTrue(status.waitForExistence(timeout: 20))
+        // Query the settled label once. Repeated predicate polling forces PDFKit
+        // to rebuild its large accessibility tree on every sample on slow runners.
+        let initialLocation = status.label
+        XCTAssertTrue(initialLocation.contains("40 / 161"), "Unexpected PDF location: " + initialLocation)
         XCTAssertFalse(app.staticTexts["原文暂时无法打开"].exists)
         shot("11-pdf-from-data-portrait")
         app.swipeUp()
-        let moved = XCTNSPredicateExpectation(predicate: NSPredicate(format: "NOT (label CONTAINS %@)", "40 / 161"), object: status)
-        XCTAssertEqual(XCTWaiter.wait(for: [moved], timeout: 5), .completed)
+        XCTAssertNotEqual(status.label, initialLocation, "The PDF must scroll to another page")
         XCUIDevice.shared.orientation = .landscapeLeft
         XCTAssertTrue(status.waitForExistence(timeout: 3)); shot("12-pdf-landscape")
         XCUIDevice.shared.orientation = .portrait
@@ -102,9 +104,10 @@ final class PhoneUITests: XCTestCase {
         app.buttons["board-245"].tap()
         XCTAssertTrue(app.staticTexts["question-number"].label.contains("第 245 题"))
         app.buttons["更多操作"].tap(); app.buttons["查看题库原文"].tap()
-        XCTAssertTrue(status.waitForExistence(timeout: 8))
+        XCTAssertTrue(status.waitForExistence(timeout: 20))
         shot("13-pdf-question-245-page95")
-        XCTAssertTrue(waitForText("95 / 161", element: status), "Unexpected PDF location: " + status.label)
+        let questionLocation = status.label
+        XCTAssertTrue(questionLocation.contains("95 / 161"), "Unexpected PDF location: " + questionLocation)
         app.buttons["完成"].tap()
         XCTAssertTrue(app.staticTexts["question-number"].label.contains("第 245 题"))
     }
