@@ -91,7 +91,15 @@ final class PhoneUITests: XCTestCase {
         XCTAssertTrue(initialLocation.contains("40 / 161"), "Unexpected PDF location: " + initialLocation)
         XCTAssertFalse(app.staticTexts["原文暂时无法打开"].exists)
         shot("11-pdf-from-data-portrait")
-        app.swipeUp()
+        // A single short scroll can leave the same PDF page visible. Drag inside
+        // the reading area far enough to cross a page boundary, with a bounded
+        // number of gestures; still fail if the reader cannot change pages.
+        let scrollStart = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8))
+        let scrollEnd = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2))
+        for _ in 0..<3 {
+            scrollStart.press(forDuration: 0.1, thenDragTo: scrollEnd)
+            if status.label != initialLocation { break }
+        }
         XCTAssertNotEqual(status.label, initialLocation, "The PDF must scroll to another page")
         XCUIDevice.shared.orientation = .landscapeLeft
         XCTAssertTrue(status.waitForExistence(timeout: 3)); shot("12-pdf-landscape")
