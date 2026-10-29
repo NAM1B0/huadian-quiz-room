@@ -26,7 +26,7 @@ v1.0.1 调整多选题答题卡：已选选项全部正确但未选全时为灰�
 
 ### iOS 原生侧载版
 
-在 [iOS v1.0.4 下载页](https://github.com/NAM1B0/huadian-quiz-room/releases/tag/v1.0.4-ios) 下载 `huadian-quiz-room-v1.0.4-ios26.ipa`，通过 AltStore Classic / AltServer 等工具自行重签安装。最低 iOS 26.0，面向 iPhone；题库与原始 PDF 内置，离线使用。
+在 [iOS v1.0.4 下载页](https://github.com/NAM1B0/huadian-quiz-room/releases/tag/v1.0.4-ios) 下载 `huadian-quiz-room-v1.0.4-ios26.ipa`，通过 Sideloadly / AltStore Classic / AltServer 等工具自行重签安装。最低 iOS 26.0，面向 iPhone；题库与原始 PDF 内置，离线使用。
 
 手机端采用 SwiftUI，底部翻题、按需展开题号、整行触控选项，支持系统大字体、深色模式和横竖屏。刷题、错题、记录管理沿用 v1.0.4 规则。安装、数据迁移和源码编译见 [iOS 使用说明](ios/README.md)。
 
