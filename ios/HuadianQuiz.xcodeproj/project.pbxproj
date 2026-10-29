@@ -1,0 +1,480 @@
+// !$*UTF8*$!
+{
+	"archiveVersion" = "1";
+	"classes" = {
+	};
+	"objectVersion" = "56";
+	"objects" = {
+		"81064C9484966817D17BF013" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Sources/DataViews.swift";
+			"sourceTree" = "<group>";
+		};
+		"12F37A69849A5693BED292D5" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Sources/HuadianQuizApp.swift";
+			"sourceTree" = "<group>";
+		};
+		"8857333C31F701D3BACAFBDE" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Sources/LibraryAndRecords.swift";
+			"sourceTree" = "<group>";
+		};
+		"EFAF415FCEB259B15CD3372C" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Sources/Models.swift";
+			"sourceTree" = "<group>";
+		};
+		"4E88291CC43A64DDBCB40BC9" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Sources/Persistence.swift";
+			"sourceTree" = "<group>";
+		};
+		"39697417EA6329A4277F02FC" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Sources/QuizView.swift";
+			"sourceTree" = "<group>";
+		};
+		"6E9E88337AD6987435010C7D" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Sources/WindowsBackupImporter.swift";
+			"sourceTree" = "<group>";
+		};
+		"E96925E86F25085E0A4BF7F9" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Tests/StudyStoreTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"E9647E18CD98EFDAD3E3EC8D" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "UITests/PhoneUITests.swift";
+			"sourceTree" = "<group>";
+		};
+		"A92404B913A6774DA8B4B918" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "text.json";
+			"path" = "../bank.json";
+			"sourceTree" = "<group>";
+		};
+		"EDC70E0A1F52C30DEBFFC65B" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "image.pdf";
+			"path" = "../source/题库原文.pdf";
+			"sourceTree" = "<group>";
+		};
+		"6C36FFE920F24CEDB7CFDBFC" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "folder.assetcatalog";
+			"path" = "Assets.xcassets";
+			"sourceTree" = "<group>";
+		};
+		"0BDFC2392C4F9A401DB5348F" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "text.xml";
+			"path" = "PrivacyInfo.xcprivacy";
+			"sourceTree" = "<group>";
+		};
+		"68E77A9D7BC78A97D4F4E27B" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "text.plist.xml";
+			"path" = "Info.plist";
+			"sourceTree" = "<group>";
+		};
+		"AB52CB08E0FDF02BF6C67C33" = {
+			"isa" = "XCBuildConfiguration";
+			"buildSettings" = {
+				"IPHONEOS_DEPLOYMENT_TARGET" = "26.0";
+				"SDKROOT" = "iphoneos";
+				"SWIFT_VERSION" = "5.0";
+				"CLANG_ENABLE_MODULES" = "YES";
+				"CLANG_ENABLE_OBJC_ARC" = "YES";
+				"SWIFT_STRICT_CONCURRENCY" = "targeted";
+				"TARGETED_DEVICE_FAMILY" = "1";
+				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
+				"SUPPORTS_MACCATALYST" = "NO";
+				"SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD" = "NO";
+				"SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD" = "NO";
+				"CODE_SIGN_STYLE" = "Automatic";
+				"DEVELOPMENT_TEAM" = "";
+				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
+				"SWIFT_OPTIMIZATION_LEVEL" = "-Onone";
+				"DEBUG_INFORMATION_FORMAT" = "dwarf";
+				"ENABLE_TESTABILITY" = "YES";
+				"SWIFT_ACTIVE_COMPILATION_CONDITIONS" = "DEBUG $(inherited)";
+				"ONLY_ACTIVE_ARCH" = "YES";
+			};
+			"name" = "Debug";
+		};
+		"5283471FF90C511CFE244FFF" = {
+			"isa" = "XCBuildConfiguration";
+			"buildSettings" = {
+				"IPHONEOS_DEPLOYMENT_TARGET" = "26.0";
+				"SDKROOT" = "iphoneos";
+				"SWIFT_VERSION" = "5.0";
+				"CLANG_ENABLE_MODULES" = "YES";
+				"CLANG_ENABLE_OBJC_ARC" = "YES";
+				"SWIFT_STRICT_CONCURRENCY" = "targeted";
+				"TARGETED_DEVICE_FAMILY" = "1";
+				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
+				"SUPPORTS_MACCATALYST" = "NO";
+				"SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD" = "NO";
+				"SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD" = "NO";
+				"CODE_SIGN_STYLE" = "Automatic";
+				"DEVELOPMENT_TEAM" = "";
+				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
+				"SWIFT_COMPILATION_MODE" = "wholemodule";
+				"SWIFT_OPTIMIZATION_LEVEL" = "-O";
+				"DEBUG_INFORMATION_FORMAT" = "dwarf-with-dsym";
+				"VALIDATE_PRODUCT" = "YES";
+			};
+			"name" = "Release";
+		};
+		"4BA304E783CFBB9FA6E56552" = {
+			"isa" = "XCConfigurationList";
+			"buildConfigurations" = ("AB52CB08E0FDF02BF6C67C33", "5283471FF90C511CFE244FFF",);
+			"defaultConfigurationIsVisible" = "0";
+			"defaultConfigurationName" = "Release";
+		};
+		"00C5B441628C479A51A5F7EB" = {
+			"isa" = "PBXFileReference";
+			"explicitFileType" = "wrapper.application";
+			"includeInIndex" = "0";
+			"path" = "HuadianQuiz.app";
+			"sourceTree" = "BUILT_PRODUCTS_DIR";
+		};
+		"BEACD35ABF5C73DB663B7850" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "81064C9484966817D17BF013";
+		};
+		"F00B4BE212CE954A0670FBAC" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "12F37A69849A5693BED292D5";
+		};
+		"817B8F098C94A908B327C265" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "8857333C31F701D3BACAFBDE";
+		};
+		"04F3CF43196C4FDE9022230A" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "EFAF415FCEB259B15CD3372C";
+		};
+		"B4CE4671A81BDF440C51740C" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "4E88291CC43A64DDBCB40BC9";
+		};
+		"50F55060DB9D12EE2311F9F3" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "39697417EA6329A4277F02FC";
+		};
+		"32A1D7C883C0745748611696" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "6E9E88337AD6987435010C7D";
+		};
+		"FD54D103FF855BC0B4F5B74C" = {
+			"isa" = "PBXSourcesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ("BEACD35ABF5C73DB663B7850", "F00B4BE212CE954A0670FBAC", "817B8F098C94A908B327C265", "04F3CF43196C4FDE9022230A", "B4CE4671A81BDF440C51740C", "50F55060DB9D12EE2311F9F3", "32A1D7C883C0745748611696",);
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"1C7291F1F0730858EAB853A1" = {
+			"isa" = "PBXFrameworksBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ();
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"A94E1732A13BEDA229215A23" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "A92404B913A6774DA8B4B918";
+		};
+		"D6A07917ABDB2743F5852D63" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "EDC70E0A1F52C30DEBFFC65B";
+		};
+		"500D94C0C001FE6CB802FCDF" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "6C36FFE920F24CEDB7CFDBFC";
+		};
+		"6C3FC853271C8C52FA4C1463" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "0BDFC2392C4F9A401DB5348F";
+		};
+		"91C7F37D6F0DFEA2EB6799FC" = {
+			"isa" = "PBXResourcesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ("A94E1732A13BEDA229215A23", "D6A07917ABDB2743F5852D63", "500D94C0C001FE6CB802FCDF", "6C3FC853271C8C52FA4C1463",);
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"DCC08885CE7C23D0D890B9CB" = {
+			"isa" = "XCBuildConfiguration";
+			"buildSettings" = {
+				"PRODUCT_NAME" = "$(TARGET_NAME)";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "io.github.nam1b0.huadianquiz";
+				"SWIFT_EMIT_LOC_STRINGS" = "YES";
+				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks",);
+				"GENERATE_INFOPLIST_FILE" = "NO";
+				"INFOPLIST_FILE" = "Info.plist";
+				"ASSETCATALOG_COMPILER_APPICON_NAME" = "AppIcon";
+				"ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME" = "AccentColor";
+				"MARKETING_VERSION" = "1.0.4";
+				"CURRENT_PROJECT_VERSION" = "10401";
+				"OTHER_LDFLAGS" = ("$(inherited)", "-lsqlite3",);
+			};
+			"name" = "Debug";
+		};
+		"CB29B55AD2D05E4853BC3FAB" = {
+			"isa" = "XCBuildConfiguration";
+			"buildSettings" = {
+				"PRODUCT_NAME" = "$(TARGET_NAME)";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "io.github.nam1b0.huadianquiz";
+				"SWIFT_EMIT_LOC_STRINGS" = "YES";
+				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks",);
+				"GENERATE_INFOPLIST_FILE" = "NO";
+				"INFOPLIST_FILE" = "Info.plist";
+				"ASSETCATALOG_COMPILER_APPICON_NAME" = "AppIcon";
+				"ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME" = "AccentColor";
+				"MARKETING_VERSION" = "1.0.4";
+				"CURRENT_PROJECT_VERSION" = "10401";
+				"OTHER_LDFLAGS" = ("$(inherited)", "-lsqlite3",);
+			};
+			"name" = "Release";
+		};
+		"1F270CD68C08E205A80835EC" = {
+			"isa" = "XCConfigurationList";
+			"buildConfigurations" = ("DCC08885CE7C23D0D890B9CB", "CB29B55AD2D05E4853BC3FAB",);
+			"defaultConfigurationIsVisible" = "0";
+			"defaultConfigurationName" = "Release";
+		};
+		"909EAC2FA9E61137BF1A0197" = {
+			"isa" = "PBXNativeTarget";
+			"buildConfigurationList" = "1F270CD68C08E205A80835EC";
+			"buildPhases" = ("FD54D103FF855BC0B4F5B74C", "1C7291F1F0730858EAB853A1", "91C7F37D6F0DFEA2EB6799FC",);
+			"buildRules" = ();
+			"dependencies" = ();
+			"name" = "HuadianQuiz";
+			"productName" = "HuadianQuiz";
+			"productReference" = "00C5B441628C479A51A5F7EB";
+			"productType" = "com.apple.product-type.application";
+		};
+		"A5C3674AB2C411B7887BD35B" = {
+			"isa" = "PBXFileReference";
+			"explicitFileType" = "wrapper.cfbundle";
+			"includeInIndex" = "0";
+			"path" = "HuadianQuizTests.xctest";
+			"sourceTree" = "BUILT_PRODUCTS_DIR";
+		};
+		"605D23C3E8A8290DCA078DC8" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "E96925E86F25085E0A4BF7F9";
+		};
+		"91CA35A77D707A067DB54EBF" = {
+			"isa" = "PBXSourcesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ("605D23C3E8A8290DCA078DC8",);
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"9D153FC8FC66790633CEBD74" = {
+			"isa" = "PBXFrameworksBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ();
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"AD215821FB225E1C5FC7474A" = {
+			"isa" = "PBXResourcesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ();
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"FBB57BCE179F3B36064528DA" = {
+			"isa" = "PBXContainerItemProxy";
+			"containerPortal" = "98F54143AB4E86B28C3AFEE0";
+			"proxyType" = "1";
+			"remoteGlobalIDString" = "909EAC2FA9E61137BF1A0197";
+			"remoteInfo" = "HuadianQuiz";
+		};
+		"F16AC983ACC7E2524284360E" = {
+			"isa" = "PBXTargetDependency";
+			"target" = "909EAC2FA9E61137BF1A0197";
+			"targetProxy" = "FBB57BCE179F3B36064528DA";
+		};
+		"90907771F45FEE062B6BD2EC" = {
+			"isa" = "XCBuildConfiguration";
+			"buildSettings" = {
+				"PRODUCT_NAME" = "$(TARGET_NAME)";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "io.github.nam1b0.huadianquiztests";
+				"SWIFT_EMIT_LOC_STRINGS" = "YES";
+				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks",);
+				"GENERATE_INFOPLIST_FILE" = "YES";
+				"OTHER_LDFLAGS" = ("$(inherited)", "-lsqlite3",);
+				"TEST_HOST" = "$(BUILT_PRODUCTS_DIR)/HuadianQuiz.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/HuadianQuiz";
+				"BUNDLE_LOADER" = "$(TEST_HOST)";
+			};
+			"name" = "Debug";
+		};
+		"4E6E85572EA2F0DE1ED604ED" = {
+			"isa" = "XCBuildConfiguration";
+			"buildSettings" = {
+				"PRODUCT_NAME" = "$(TARGET_NAME)";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "io.github.nam1b0.huadianquiztests";
+				"SWIFT_EMIT_LOC_STRINGS" = "YES";
+				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks",);
+				"GENERATE_INFOPLIST_FILE" = "YES";
+				"OTHER_LDFLAGS" = ("$(inherited)", "-lsqlite3",);
+				"TEST_HOST" = "$(BUILT_PRODUCTS_DIR)/HuadianQuiz.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/HuadianQuiz";
+				"BUNDLE_LOADER" = "$(TEST_HOST)";
+			};
+			"name" = "Release";
+		};
+		"2D8590343CFFDABDF60A872A" = {
+			"isa" = "XCConfigurationList";
+			"buildConfigurations" = ("90907771F45FEE062B6BD2EC", "4E6E85572EA2F0DE1ED604ED",);
+			"defaultConfigurationIsVisible" = "0";
+			"defaultConfigurationName" = "Release";
+		};
+		"468ED4778130163F5E132E93" = {
+			"isa" = "PBXNativeTarget";
+			"buildConfigurationList" = "2D8590343CFFDABDF60A872A";
+			"buildPhases" = ("91CA35A77D707A067DB54EBF", "9D153FC8FC66790633CEBD74", "AD215821FB225E1C5FC7474A",);
+			"buildRules" = ();
+			"dependencies" = ("F16AC983ACC7E2524284360E",);
+			"name" = "HuadianQuizTests";
+			"productName" = "HuadianQuizTests";
+			"productReference" = "A5C3674AB2C411B7887BD35B";
+			"productType" = "com.apple.product-type.bundle.unit-test";
+		};
+		"3D641EE32679F0B6461A0FEB" = {
+			"isa" = "PBXFileReference";
+			"explicitFileType" = "wrapper.cfbundle";
+			"includeInIndex" = "0";
+			"path" = "HuadianQuizUITests.xctest";
+			"sourceTree" = "BUILT_PRODUCTS_DIR";
+		};
+		"E59ACF05C0FE2AF0BFAC0361" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "E9647E18CD98EFDAD3E3EC8D";
+		};
+		"1AAD4C1EF8D837D768D1A065" = {
+			"isa" = "PBXSourcesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ("E59ACF05C0FE2AF0BFAC0361",);
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"92C6B76F91F8AAB6D7901EE2" = {
+			"isa" = "PBXFrameworksBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ();
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"C039EAB76F0D6D00CB911CC0" = {
+			"isa" = "PBXResourcesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ();
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"6499AF2FC44D99B264764AAC" = {
+			"isa" = "PBXContainerItemProxy";
+			"containerPortal" = "98F54143AB4E86B28C3AFEE0";
+			"proxyType" = "1";
+			"remoteGlobalIDString" = "909EAC2FA9E61137BF1A0197";
+			"remoteInfo" = "HuadianQuiz";
+		};
+		"66CFC53602012B7B1157FDEE" = {
+			"isa" = "PBXTargetDependency";
+			"target" = "909EAC2FA9E61137BF1A0197";
+			"targetProxy" = "6499AF2FC44D99B264764AAC";
+		};
+		"2EC72BC64DE783DA71C66DBA" = {
+			"isa" = "XCBuildConfiguration";
+			"buildSettings" = {
+				"PRODUCT_NAME" = "$(TARGET_NAME)";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "io.github.nam1b0.huadianquizuitests";
+				"SWIFT_EMIT_LOC_STRINGS" = "YES";
+				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks",);
+				"GENERATE_INFOPLIST_FILE" = "YES";
+				"OTHER_LDFLAGS" = ("$(inherited)", "-lsqlite3",);
+				"TEST_TARGET_NAME" = "HuadianQuiz";
+			};
+			"name" = "Debug";
+		};
+		"B8470346BF28C67DC9A146E7" = {
+			"isa" = "XCBuildConfiguration";
+			"buildSettings" = {
+				"PRODUCT_NAME" = "$(TARGET_NAME)";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "io.github.nam1b0.huadianquizuitests";
+				"SWIFT_EMIT_LOC_STRINGS" = "YES";
+				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks",);
+				"GENERATE_INFOPLIST_FILE" = "YES";
+				"OTHER_LDFLAGS" = ("$(inherited)", "-lsqlite3",);
+				"TEST_TARGET_NAME" = "HuadianQuiz";
+			};
+			"name" = "Release";
+		};
+		"0CC569C1EA4ABC20988A170F" = {
+			"isa" = "XCConfigurationList";
+			"buildConfigurations" = ("2EC72BC64DE783DA71C66DBA", "B8470346BF28C67DC9A146E7",);
+			"defaultConfigurationIsVisible" = "0";
+			"defaultConfigurationName" = "Release";
+		};
+		"51519BAD0C184EB835320B73" = {
+			"isa" = "PBXNativeTarget";
+			"buildConfigurationList" = "0CC569C1EA4ABC20988A170F";
+			"buildPhases" = ("1AAD4C1EF8D837D768D1A065", "92C6B76F91F8AAB6D7901EE2", "C039EAB76F0D6D00CB911CC0",);
+			"buildRules" = ();
+			"dependencies" = ("66CFC53602012B7B1157FDEE",);
+			"name" = "HuadianQuizUITests";
+			"productName" = "HuadianQuizUITests";
+			"productReference" = "3D641EE32679F0B6461A0FEB";
+			"productType" = "com.apple.product-type.bundle.ui-testing";
+		};
+		"FBDC4F23F93125BBEEAE800C" = {
+			"isa" = "PBXGroup";
+			"children" = ("00C5B441628C479A51A5F7EB", "A5C3674AB2C411B7887BD35B", "3D641EE32679F0B6461A0FEB",);
+			"name" = "Products";
+			"sourceTree" = "<group>";
+		};
+		"B28B7AF69320201D1CF206EB" = {
+			"isa" = "PBXGroup";
+			"children" = ("81064C9484966817D17BF013", "12F37A69849A5693BED292D5", "8857333C31F701D3BACAFBDE", "EFAF415FCEB259B15CD3372C", "4E88291CC43A64DDBCB40BC9", "39697417EA6329A4277F02FC", "6E9E88337AD6987435010C7D", "E96925E86F25085E0A4BF7F9", "E9647E18CD98EFDAD3E3EC8D", "A92404B913A6774DA8B4B918", "EDC70E0A1F52C30DEBFFC65B", "6C36FFE920F24CEDB7CFDBFC", "0BDFC2392C4F9A401DB5348F", "68E77A9D7BC78A97D4F4E27B", "FBDC4F23F93125BBEEAE800C",);
+			"sourceTree" = "<group>";
+		};
+		"98F54143AB4E86B28C3AFEE0" = {
+			"isa" = "PBXProject";
+			"attributes" = {
+				"BuildIndependentTargetsInParallel" = "YES";
+				"LastUpgradeCheck" = "2600";
+				"TargetAttributes" = {
+					"909EAC2FA9E61137BF1A0197" = {
+						"CreatedOnToolsVersion" = "26.0";
+					};
+					"468ED4778130163F5E132E93" = {
+						"CreatedOnToolsVersion" = "26.0";
+						"TestTargetID" = "909EAC2FA9E61137BF1A0197";
+					};
+					"51519BAD0C184EB835320B73" = {
+						"CreatedOnToolsVersion" = "26.0";
+						"TestTargetID" = "909EAC2FA9E61137BF1A0197";
+					};
+				};
+			};
+			"buildConfigurationList" = "4BA304E783CFBB9FA6E56552";
+			"compatibilityVersion" = "Xcode 14.0";
+			"developmentRegion" = "zh-Hans";
+			"hasScannedForEncodings" = "0";
+			"knownRegions" = ("zh-Hans", "en", "Base",);
+			"mainGroup" = "B28B7AF69320201D1CF206EB";
+			"productRefGroup" = "FBDC4F23F93125BBEEAE800C";
+			"projectDirPath" = "";
+			"projectRoot" = "";
+			"targets" = ("909EAC2FA9E61137BF1A0197", "468ED4778130163F5E132E93", "51519BAD0C184EB835320B73",);
+		};
+	};
+	"rootObject" = "98F54143AB4E86B28C3AFEE0";
+}

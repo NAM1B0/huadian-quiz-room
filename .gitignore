@@ -20,3 +20,10 @@ __pycache__/
 /tools/extraction/poppler.txt
 .DS_Store
 Thumbs.db
+# Xcode local state and generated builds
+ios/build/
+ios/DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xcresult/
+*.ipa
