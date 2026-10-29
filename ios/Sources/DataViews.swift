@@ -18,7 +18,6 @@ struct DataView: View {
     @State private var candidate: StudyState?
     @State private var confirmRestore = false
     @State private var problem: String?
-    @State private var restored = false
     var body: some View {
         NavigationStack {
             List {
@@ -53,14 +52,13 @@ struct DataView: View {
                         confirmRestore = true
                     } catch { candidate = nil; problem = error.localizedDescription }
                 }
-                .alert("用备份替换当前记录？", isPresented: $confirmRestore) {
+                .confirmationDialog("用备份替换当前记录？", isPresented: $confirmRestore, titleVisibility: .visible) {
                     Button("取消", role: .cancel) { candidate = nil }
                     Button("备份并恢复", role: .destructive) {
-                        do { if let candidate { try store.restore(candidate); restored = true }; candidate = nil }
+                        do { if let candidate { try store.restore(candidate) }; candidate = nil }
                         catch { problem = error.localizedDescription }
                     }
                 } message: { Text("备份包含 \(candidate?.practice.count ?? 0) 道练习、\(candidate?.exams.count ?? 0) 场考试。恢复前会自动保存现有记录；Windows 备份导入后，手机与电脑各自保存进度。") }
-                .alert("已恢复学习记录", isPresented: $restored) { Button("好") { } }
                 .studyError($problem)
         }
     }
@@ -71,7 +69,6 @@ struct BackupsView: View {
     @State private var backups: [LocalBackup] = []
     @State private var candidate: StudyState?
     @State private var confirm = false
-    @State private var restored = false
     @State private var problem: String?
     var body: some View {
         List {
@@ -86,14 +83,13 @@ struct BackupsView: View {
             } footer: { Text("每天首次打开，以及删除考试或恢复数据前，自动保存一份备份。备份也在本机，卸载前请导出。") }
         }.navigationTitle("自动备份").navigationBarTitleDisplayMode(.inline)
             .task { reload() }
-            .alert("恢复这份备份？", isPresented: $confirm) {
+            .confirmationDialog("恢复这份备份？", isPresented: $confirm, titleVisibility: .visible) {
                 Button("取消", role: .cancel) { candidate = nil }
                 Button("备份并恢复", role: .destructive) {
-                    do { if let candidate { try store.restore(candidate); restored = true; reload() }; candidate = nil }
+                    do { if let candidate { try store.restore(candidate); reload() }; candidate = nil }
                     catch { problem = error.localizedDescription }
                 }
             } message: { Text("当前记录将被替换，替换前会另存一份备份。") }
-            .alert("已恢复学习记录", isPresented: $restored) { Button("好") { } }
             .studyError($problem)
     }
     private func reload() { do { backups = try store.persistence.listBackups() } catch { problem = error.localizedDescription } }

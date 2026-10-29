@@ -4,14 +4,12 @@
 
 ## 安装
 
-本目录的构建产物 `huadian-quiz-room-v1.0.4-ios26.ipa` 是真正的 arm64 iOS 应用，未使用开发者证书签名，需要用户自行重签。不能直接点击 IPA 安装，也不能安装在 Android、Windows 或 iOS 25 及更早版本。
+本目录的构建产物 `huadian-quiz-room-v1.0.4-ios26.ipa` 是 arm64 iOS 应用，未使用开发者证书签名，需要用户自行重签，系统须为 iOS 26 或更新版本。
 
 1. 在电脑按 [AltStore Classic 官方教程](https://faq.altstore.io/altstore-classic/altserver) 安装 AltServer，并在 iPhone 上安装 AltStore Classic。
-2. 将 IPA 保存到 iPhone 的“文件”应用，在 AltStore Classic 的 My Apps 中点 `+` 选择它，使用自己的 Apple 账户完成侧载。不要把密码提供给本项目。
+2. 将 IPA 保存到 iPhone 的“文件”应用，在 AltStore Classic 的 My Apps 中点 `+` 选择它，使用自己的 Apple 账户完成侧载。
 3. 按 AltStore 提示启用开发者模式、信任签名并定期刷新。免费账户通常需要每 7 天刷新，且有同时侧载数量限制，详见 [AltStore 官方说明](https://faq.altstore.io/altstore-classic/your-altstore)。这里指 Classic，不是 AltStore PAL。
 4. 更新前从“数据 → 导出学习记录”备份。使用同一账户、同一签名 App ID 覆盖安装有助于保留数据；删除应用会删除其本机数据，签名工具改变 App ID 也可能安装成另一个应用。
-
-只在用户自己的设备上重新签名安装。此项目没有 Apple 开发者分发证书，不提供已签名的企业证书包，也不要求越狱。
 
 ## 手机适配
 

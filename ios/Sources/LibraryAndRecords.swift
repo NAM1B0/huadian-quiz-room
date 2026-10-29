@@ -96,6 +96,7 @@ struct RecordsView: View {
                     }
                 }
             }.navigationTitle("做题记录")
+                .toolbar(editing ? .hidden : .visible, for: .tabBar)
                 .environment(\.editMode, Binding(get: { editing ? .active : .inactive }, set: { editing = $0.isEditing }))
                 .onChange(of: practiceTab) { _, _ in editing = false; selected.removeAll() }
                 .onChange(of: filter) { _, _ in selected.removeAll() }
@@ -113,7 +114,7 @@ struct RecordsView: View {
                         }
                     }
                 }
-                .alert("删除 \(selected.count) 场考试？", isPresented: $confirmDeletion) {
+                .confirmationDialog("删除 \(selected.count) 场考试？", isPresented: $confirmDeletion, titleVisibility: .visible) {
                     Button("取消", role: .cancel) { }
                     Button("删除", role: .destructive) {
                         do { try store.deleteExams(selected); selected.removeAll() } catch { problem = error.localizedDescription }

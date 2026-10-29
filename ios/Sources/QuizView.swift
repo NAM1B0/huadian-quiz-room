@@ -6,6 +6,8 @@ struct QuizView: View {
     @EnvironmentObject private var store: StudyStore
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scene
+    @Environment(\.dynamicTypeSize) private var textSize
+    @ScaledMetric(relativeTo: .body) private var optionSymbolWidth = 24.0
     @State private var key: String
     @State private var showAnswers = false
     @State private var board = false
@@ -15,6 +17,7 @@ struct QuizView: View {
     @State private var pending: Task<Void, Never>?
     @State private var tickStart: TimeInterval?
     @State private var liveSeconds: TimeInterval = 0
+    @AccessibilityFocusState private var questionFocused: Bool
     private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     init(route: QuizRoute) {
@@ -43,7 +46,7 @@ struct QuizView: View {
     }
 
     var body: some View {
-        Group {
+        ZStack {
             if let question { questionPage(question) }
             else { ContentUnavailableView("题目已不存在", systemImage: "doc.questionmark", description: Text("请返回题库重新进入。")) }
         }
@@ -56,11 +59,15 @@ struct QuizView: View {
                         .accessibilityLabel("累计用时 " + elapsedText(exam.elapsed + liveSeconds))
                 }
             }
+            if activeExam && exam?.allAnswered == true {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("交卷") { cancelAdvance(); confirmSubmit = true }.accessibilityIdentifier("submit-toolbar")
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     if !activeExam { Button("查看题库原文", systemImage: "doc.richtext") { cancelAdvance(); pdf = true } }
                     if !locked { Button("清空本题选择", systemImage: "eraser") { save([]) }.disabled(choices.isEmpty) }
-                    if activeExam { Button("交卷", systemImage: "checkmark.seal") { cancelAdvance(); confirmSubmit = true }.disabled(exam?.allAnswered != true) }
                 } label: { Image(systemName: "ellipsis.circle").frame(minWidth: 44, minHeight: 44) }
                 .accessibilityLabel("更多操作")
             }
@@ -72,12 +79,13 @@ struct QuizView: View {
                 .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $pdf) { PDFScreen(page: question?.pdfPage ?? 40) }
-        .alert("确认交卷？", isPresented: $confirmSubmit) {
+        .confirmationDialog("确认交卷？", isPresented: $confirmSubmit, titleVisibility: .visible) {
             Button("继续检查", role: .cancel) { }
             Button("交卷") { submit() }
         } message: { Text("交卷后显示成绩和正确答案，本场答案将不能再修改。") }
         .studyError($problem)
         .onAppear { startClock() }
+        .onChange(of: key) { _, _ in questionFocused = true }
         .onDisappear { cancelAdvance(); flushClock(); tickStart = nil; liveSeconds = 0 }
         .onChange(of: scene) { _, next in
             if next == .active { startClock() } else { cancelAdvance(); flushClock(); tickStart = nil; liveSeconds = 0 }
@@ -93,17 +101,22 @@ struct QuizView: View {
     }
 
     private func questionPage(_ q: Question) -> some View {
+        ScrollViewReader { reader in
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(groupTitle(q)).font(.subheadline).foregroundStyle(.secondary)
-                    HStack(alignment: .firstTextBaseline) {
+                    let metadata = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6)) : AnyLayout(HStackLayout(alignment: .firstTextBaseline))
+                    metadata {
                         Text("第 \(q.number) 题 · \(q.type.shortTitle)").font(.headline).accessibilityIdentifier("question-number")
-                        Spacer(minLength: 8)
+                        if !textSize.isAccessibilitySize { Spacer(minLength: 8) }
                         Text("\(position) / \(route.keys.count)").font(.caption).monospacedDigit().foregroundStyle(.secondary)
                     }
                     if let subsection = q.subsection, !subsection.isEmpty { Text(subsection).font(.caption).foregroundStyle(.secondary) }
-                }
+                    if let id = review?.examID, let origin = store.exam(id) {
+                        Text("考试：" + origin.created.formatted(.dateTime.month().day().hour().minute())).font(.caption).foregroundStyle(.secondary)
+                    }
+                }.id("question-top")
                 if canPreview {
                     Toggle("显示整套正确答案", isOn: $showAnswers).font(.subheadline).accessibilityIdentifier("show-answers")
                 }
@@ -120,13 +133,14 @@ struct QuizView: View {
                         .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
                 }
                 Text(q.text).font(.title3).fixedSize(horizontal: false, vertical: true)
-                    .textSelection(.enabled).accessibilityIdentifier("question-text")
+                    .textSelection(.enabled).accessibilityIdentifier("question-text").accessibilityFocused($questionFocused)
                 VStack(spacing: 12) { ForEach(q.options) { option in optionButton(option, question: q) } }
                 if activeExam {
                     if q.type == .multiple { Text("选好后，点击“下一题”。").font(.footnote).foregroundStyle(.secondary) }
                     if exam?.allAnswered == true {
                         Button("全部已答 · 交卷") { cancelAdvance(); confirmSubmit = true }
                             .buttonStyle(.borderedProminent).controlSize(.large).frame(maxWidth: .infinity)
+                            .accessibilityIdentifier("submit-exam")
                     }
                 } else if showAnswers || !choices.isEmpty {
                     VStack(alignment: .leading, spacing: 10) {
@@ -141,7 +155,9 @@ struct QuizView: View {
                     Text("已到最后一题，可打开题号检查其他题目。").font(.footnote).foregroundStyle(.secondary)
                 }
             }.padding(20).frame(maxWidth: 720, alignment: .leading).frame(maxWidth: .infinity)
-        }.id(key).background(Color(.systemBackground))
+        }.background(Color(.systemBackground))
+            .onChange(of: key) { _, _ in reader.scrollTo("question-top", anchor: .top) }
+        }
     }
 
     private func optionButton(_ option: QuestionOption, question q: Question) -> some View {
@@ -150,6 +166,7 @@ struct QuizView: View {
         let correctOption = reveal && q.answer.contains(option.key)
         let wrongOption = reveal && selected && !q.answer.contains(option.key)
         let stroke: Color = correctOption ? .green : wrongOption ? .red : selected ? .accentColor : Color(.separator)
+        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10)) : AnyLayout(HStackLayout(alignment: .top, spacing: 12))
         return Button {
             var next = choices
             if q.type == .multiple {
@@ -157,12 +174,17 @@ struct QuizView: View {
             } else { next = [option.key] }
             save(next)
         } label: {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: q.type == .multiple ? (selected ? "checkmark.square.fill" : "square") : (selected ? "largecircle.fill.circle" : "circle"))
-                    .foregroundStyle(selected ? Color.accentColor : Color.secondary).frame(width: 24).padding(.top, 1)
-                Text(option.key).font(.body.weight(.semibold)).frame(minWidth: 16)
+            layout {
+                HStack(spacing: 12) {
+                    Image(systemName: q.type == .multiple ? (selected ? "checkmark.square.fill" : "square") : (selected ? "largecircle.fill.circle" : "circle"))
+                        .foregroundStyle(selected ? Color.accentColor : Color.secondary).frame(width: optionSymbolWidth)
+                    Text(option.key).font(.body.weight(.semibold)).frame(minWidth: 16)
+                    if textSize.isAccessibilitySize && (correctOption || wrongOption) {
+                        Image(systemName: correctOption ? "checkmark" : "xmark").foregroundStyle(stroke)
+                    }
+                }
                 Text(option.text).font(.body).frame(maxWidth: .infinity, alignment: .leading).fixedSize(horizontal: false, vertical: true)
-                if correctOption || wrongOption { Image(systemName: correctOption ? "checkmark" : "xmark").font(.caption.weight(.bold)).foregroundStyle(stroke) }
+                if !textSize.isAccessibilitySize && (correctOption || wrongOption) { Image(systemName: correctOption ? "checkmark" : "xmark").font(.caption.weight(.bold)).foregroundStyle(stroke) }
             }.foregroundStyle(.primary).padding(16).frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
                 .background(selected ? Color.accentColor.opacity(0.07) : Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
                 .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(stroke, lineWidth: selected || correctOption ? 2 : 1))
@@ -174,13 +196,19 @@ struct QuizView: View {
 
     private var navigationBar: some View {
         HStack(spacing: 8) {
-            Button { move(-1) } label: { Label("上一题", systemImage: "chevron.left").labelStyle(.titleOnly).frame(maxWidth: .infinity, minHeight: 44) }
+            Button { move(-1) } label: { navigationLabel("上一题", symbol: "chevron.left") }
                 .disabled(neighbor(-1) == nil).accessibilityIdentifier("previous-question")
-            Button { cancelAdvance(); board = true } label: { Label("题号", systemImage: "square.grid.3x3").frame(maxWidth: .infinity, minHeight: 44) }
+            Button { cancelAdvance(); board = true } label: { navigationLabel("题号", symbol: "square.grid.3x3") }
                 .accessibilityIdentifier("question-board")
-            Button { move(1) } label: { Label("下一题", systemImage: "chevron.right").labelStyle(.titleOnly).frame(maxWidth: .infinity, minHeight: 44) }
+            Button { move(1) } label: { navigationLabel("下一题", symbol: "chevron.right") }
                 .disabled(neighbor(1) == nil).accessibilityIdentifier("next-question")
         }.font(.subheadline.weight(.semibold)).buttonStyle(.bordered).padding(.horizontal, 12).padding(.vertical, 8).background(.bar)
+    }
+    private func navigationLabel(_ title: String, symbol: String) -> some View {
+        Group {
+            if textSize.isAccessibilitySize { Image(systemName: symbol) }
+            else { Text(title) }
+        }.frame(maxWidth: .infinity, minHeight: 44).accessibilityLabel(title)
     }
 
     private func groupTitle(_ q: Question) -> String {
@@ -198,7 +226,8 @@ struct QuizView: View {
             let mistake: MistakeEntry? = { if case .review = route.mode { return store.mistake(item) }; return nil }()
             guard mistake?.dismissed != true, let q = store.questions[mistake?.qid ?? item] else { return nil }
             let selected = answer(for: item)
-            return BoardItem(id: item, question: q, result: activeExam && !selected.isEmpty ? .answered : q.result(for: selected))
+            let origin = mistake?.examID.flatMap { store.exam($0)?.created.formatted(.dateTime.month(.twoDigits).day(.twoDigits).hour().minute()) }
+            return BoardItem(id: item, question: q, result: activeExam && !selected.isEmpty ? .answered : q.result(for: selected), origin: origin)
         }
     }
     private func neighbor(_ direction: Int) -> String? {
@@ -238,8 +267,12 @@ struct QuizView: View {
             }
             if shouldAdvance(mode: route.mode, kind: q.type, result: q.result(for: next), submitted: exam?.status == .submitted) {
                 let savedKey = key
+                let delay = UIAccessibility.isVoiceOverRunning ? 1600 : 650
+                if UIAccessibility.isVoiceOverRunning && !activeExam {
+                    UIAccessibility.post(notification: .announcement, argument: q.result(for: next).title)
+                }
                 pending = Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(650))
+                    try? await Task.sleep(for: .milliseconds(delay))
                     guard !Task.isCancelled, key == savedKey, scene == .active else { return }
                     if let next = neighbor(1) { jump(next) }
                     else if review?.dismissed == true { dismiss() }
@@ -262,7 +295,7 @@ struct QuizView: View {
     }
 }
 
-struct BoardItem: Identifiable { let id: String; let question: Question; let result: AnswerResult }
+struct BoardItem: Identifiable { let id: String; let question: Question; let result: AnswerResult; let origin: String? }
 
 struct QuestionBoard: View {
     let items: [BoardItem]
@@ -295,17 +328,18 @@ struct QuestionBoard: View {
                         if !members.isEmpty {
                             VStack(alignment: .leading, spacing: 12) {
                                 Text(group.type.shortTitle + " · " + group.part + " · " + group.title).font(.headline)
-                                LazyVGrid(columns: [GridItem(.adaptive(minimum: textSize.isAccessibilitySize ? 76 : 48), spacing: 10)], spacing: 10) {
+                                LazyVGrid(columns: [GridItem(.adaptive(minimum: textSize.isAccessibilitySize || items.contains(where: { $0.origin != nil }) ? 86 : 48), spacing: 10)], spacing: 10) {
                                     ForEach(members) { item in
                                         Button { choose(item.id) } label: {
                                             VStack(spacing: 3) {
                                                 Text(String(item.question.number)).font(.subheadline.weight(.semibold)).monospacedDigit()
                                                 Image(systemName: item.result.symbol).font(.caption2).foregroundStyle(item.result.color)
+                                                if let origin = item.origin { Text(origin).font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
                                             }.frame(maxWidth: .infinity, minHeight: 48).padding(.vertical, 2)
                                                 .foregroundStyle(.primary)
                                                 .background(item.result.color.opacity(item.result == .unanswered ? 0.06 : 0.15), in: RoundedRectangle(cornerRadius: 10))
                                                 .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(item.id == current ? Color.accentColor : .clear, lineWidth: 2))
-                                        }.buttonStyle(.plain).accessibilityLabel("第 \(item.question.number) 题，\(item.result.title)" + (item.id == current ? "，当前题目" : ""))
+                                        }.buttonStyle(.plain).accessibilityLabel("第 \(item.question.number) 题，\(item.result.title)" + (item.id == current ? "，当前题目" : "") + (item.origin.map { "，考试时间 " + $0 } ?? ""))
                                             .accessibilityIdentifier("board-" + item.id)
                                     }
                                 }

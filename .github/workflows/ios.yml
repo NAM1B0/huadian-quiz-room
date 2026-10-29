@@ -14,7 +14,7 @@ concurrency:
 jobs:
   build:
     runs-on: macos-26
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - name: Check Xcode and project
@@ -24,13 +24,25 @@ jobs:
           python3 ios/tools/generate_project.py
           git diff --exit-code -- ios/HuadianQuiz.xcodeproj ios/Info.plist ios/PrivacyInfo.xcprivacy
           plutil -lint ios/HuadianQuiz.xcodeproj/project.pbxproj ios/Info.plist
-      - name: Create iPhone 13 Pro simulator
-        run: python3 ios/tools/select_simulator.py
-      - name: Compile and test the native phone app
+      - name: Compile app and test bundles
+        timeout-minutes: 10
         run: |
           set -o pipefail
           mkdir -p ios/build
-          xcodebuild test -project ios/HuadianQuiz.xcodeproj -scheme HuadianQuiz -configuration Debug -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -derivedDataPath ios/build/DerivedData -resultBundlePath ios/build/PhoneTests.xcresult -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO 2>&1 | tee ios/build/tests.txt
+          xcodebuild build-for-testing -project ios/HuadianQuiz.xcodeproj -scheme HuadianQuiz -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath ios/build/DerivedData CODE_SIGNING_ALLOWED=NO 2>&1 | tee ios/build/compile.txt
+      - name: Create iPhone 13 Pro simulator
+        timeout-minutes: 10
+        run: python3 ios/tools/select_simulator.py
+      - name: Run persistence and quiz logic tests
+        timeout-minutes: 5
+        run: |
+          set -o pipefail
+          xcodebuild test-without-building -project ios/HuadianQuiz.xcodeproj -scheme HuadianQuiz -configuration Debug -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -derivedDataPath ios/build/DerivedData -resultBundlePath ios/build/UnitTests.xcresult -only-testing:HuadianQuizTests -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 60 CODE_SIGNING_ALLOWED=NO 2>&1 | tee ios/build/unit-tests.txt
+      - name: Run iPhone interface tests
+        timeout-minutes: 15
+        run: |
+          set -o pipefail
+          xcodebuild test-without-building -project ios/HuadianQuiz.xcodeproj -scheme HuadianQuiz -configuration Debug -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -derivedDataPath ios/build/DerivedData -resultBundlePath ios/build/PhoneTests.xcresult -only-testing:HuadianQuizUITests -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 120 CODE_SIGNING_ALLOWED=NO 2>&1 | tee ios/build/tests.txt
       - name: Export simulator screenshots
         if: always()
         run: |
@@ -58,8 +70,24 @@ jobs:
         with:
           name: ios-phone-test-evidence
           path: |
+            ios/build/compile.txt
+            ios/build/unit-tests.txt
             ios/build/tests.txt
             ios/build/archive.txt
             ios/build/screenshots/
             ios/build/PhoneTests.xcresult/
+            ios/build/UnitTests.xcresult/
+          retention-days: 14
+      - name: Upload screenshots separately
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-phone-screenshots
+          path: |
+            ios/build/screenshots/*.png
+            ios/build/screenshots/*.txt
+            ios/build/screenshots/manifest.json
+            ios/build/compile.txt
+            ios/build/unit-tests.txt
+            ios/build/tests.txt
           retention-days: 14
