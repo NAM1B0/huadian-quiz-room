@@ -100,10 +100,11 @@ final class PhoneUITests: XCTestCase {
         let search = app.textFields["jump-number"]
         XCTAssertTrue(search.waitForExistence(timeout: 5)); search.tap(); search.typeText("245")
         app.buttons["board-245"].tap()
+        XCTAssertTrue(app.staticTexts["question-number"].label.contains("第 245 题"))
         app.buttons["更多操作"].tap(); app.buttons["查看题库原文"].tap()
         XCTAssertTrue(status.waitForExistence(timeout: 8))
-        XCTAssertTrue(waitForText("95 / 161", element: status))
         shot("13-pdf-question-245-page95")
+        XCTAssertTrue(waitForText("95 / 161", element: status), "Unexpected PDF location: " + status.label)
         app.buttons["完成"].tap()
         XCTAssertTrue(app.staticTexts["question-number"].label.contains("第 245 题"))
     }

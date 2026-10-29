@@ -11,7 +11,7 @@ struct QuizView: View {
     @State private var key: String
     @State private var showAnswers = false
     @State private var board = false
-    @State private var pdf = false
+    @State private var pdf: PDFPageRequest?
     @State private var confirmSubmit = false
     @State private var problem: String?
     @State private var pending: Task<Void, Never>?
@@ -66,7 +66,7 @@ struct QuizView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    if !activeExam { Button("查看题库原文", systemImage: "doc.richtext") { cancelAdvance(); pdf = true } }
+                    if !activeExam { Button("查看题库原文", systemImage: "doc.richtext") { cancelAdvance(); pdf = PDFPageRequest(page: question?.pdfPage ?? 40) } }
                     if !locked { Button("清空本题选择", systemImage: "eraser") { save([]) }.disabled(choices.isEmpty) }
                 } label: { Image(systemName: "ellipsis.circle").frame(minWidth: 44, minHeight: 44) }
                 .accessibilityLabel("更多操作")
@@ -78,7 +78,7 @@ struct QuizView: View {
                           canSubmit: exam?.allAnswered == true, choose: { jump($0); board = false }, submit: { board = false; confirmSubmit = true })
                 .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
         }
-        .sheet(isPresented: $pdf) { PDFScreen(page: question?.pdfPage ?? 40) }
+        .sheet(item: $pdf) { request in PDFScreen(page: request.page) }
         .confirmationDialog("确认交卷？", isPresented: $confirmSubmit, titleVisibility: .visible) {
             Button("继续检查", role: .cancel) { }
             Button("交卷") { submit() }
@@ -91,7 +91,7 @@ struct QuizView: View {
             if next == .active { startClock() } else { cancelAdvance(); flushClock(); tickStart = nil; liveSeconds = 0 }
         }
         .onChange(of: pdf) { _, visible in
-            if visible { flushClock(); tickStart = nil; liveSeconds = 0 } else { startClock() }
+            if visible != nil { flushClock(); tickStart = nil; liveSeconds = 0 } else { startClock() }
         }
         .onReceive(ticker) { _ in
             guard activeExam, scene == .active, let start = tickStart else { return }

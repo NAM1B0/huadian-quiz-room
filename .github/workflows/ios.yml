@@ -55,6 +55,7 @@ jobs:
           set -o pipefail
           xcodebuild archive -project ios/HuadianQuiz.xcodeproj -scheme HuadianQuiz -configuration Release -destination 'generic/platform=iOS' -archivePath ios/build/HuadianQuiz.xcarchive -derivedDataPath ios/build/ReleaseData CODE_SIGNING_ALLOWED=NO 2>&1 | tee ios/build/archive.txt
           python3 ios/tools/package_ipa.py ios/build/HuadianQuiz.xcarchive ios/build/output
+          python3 ios/tools/verify_ipa.py ios/build/output/huadian-quiz-room-v1.0.4-ios26-build10402.ipa --build 10402
       - name: Upload IPA and verification info
         uses: actions/upload-artifact@v4
         with:

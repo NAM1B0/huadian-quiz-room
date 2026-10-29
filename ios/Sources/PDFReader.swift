@@ -16,6 +16,11 @@ enum BundledPDF {
     }
 }
 
+struct PDFPageRequest: Identifiable, Equatable {
+    let page: Int
+    var id: Int { page }
+}
+
 struct PDFScreen: View {
     let page: Int
     var embedded = false
@@ -101,6 +106,7 @@ final class PDFReaderController: UIViewController {
     private let initialPage: Int
     private var previousSize = CGSize.zero
     private var configured = false
+    private var initialPresentationCompleted = false
     var pageChanged: (Int) -> Void
 
     init(document: PDFDocument, page: Int, pageChanged: @escaping (Int) -> Void) {
@@ -135,7 +141,7 @@ final class PDFReaderController: UIViewController {
         previousSize = size
         // PDFKit must calculate its initial scale and destination after Auto Layout
         // supplies a real viewport. A zero-size representable can remain blank.
-        let target = configured ? pdfView.currentPage : document.page(at: min(max(initialPage - 1, 0), document.pageCount - 1))
+        let target = configured && initialPresentationCompleted ? pdfView.currentPage : initialTarget
         if !configured {
             configured = true
             pdfView.document = document
@@ -144,8 +150,27 @@ final class PDFReaderController: UIViewController {
         pdfView.layoutDocumentView()
         let scale = pdfView.scaleFactorForSizeToFit
         if scale.isFinite, scale > 0 { pdfView.scaleFactor = scale }
-        if let target { pdfView.go(to: target) }
+        if let target { position(at: target) }
         reportPage()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        guard !initialPresentationCompleted else { return }
+        initialPresentationCompleted = true
+        // A sheet changes its viewport during presentation. Anchor the requested
+        // page once the transition is complete, not an adjacent transient page.
+        pdfView.layoutDocumentView()
+        if let target = initialTarget { position(at: target) }
+        reportPage()
+    }
+
+    private var initialTarget: PDFPage? {
+        document.page(at: min(max(initialPage - 1, 0), document.pageCount - 1))
+    }
+    private func position(at page: PDFPage) {
+        let bounds = page.bounds(for: .mediaBox)
+        pdfView.go(to: PDFDestination(page: page, at: CGPoint(x: bounds.minX, y: bounds.maxY)))
     }
 
     @objc private func reportPage() {
