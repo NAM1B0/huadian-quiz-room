@@ -1,6 +1,5 @@
 import SwiftUI
 import UniformTypeIdentifiers
-import PDFKit
 
 struct BackupDocument: FileDocument {
     static var readableContentTypes: [UTType] { [.json] }
@@ -30,9 +29,10 @@ struct DataView: View {
                 footer: { Text("记录保存在本机。卸载前请导出备份，避免丢失。可导入 iOS 的 JSON 备份或 Windows 版导出的 SQLite 备份。") }
                 Section {
                     LabeledContent("题库", value: "2026 年 9 月版 · 563 题")
-                    LabeledContent("版本", value: "1.0.4 · iOS")
+                    LabeledContent("版本", value: "\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.4") (\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "")) · iOS")
                     LabeledContent("系统", value: "iOS 26 或更新版本")
                     NavigationLink { PDFScreen(page: 40, embedded: true) } label: { Label("题库原文", systemImage: "doc.richtext") }
+                        .accessibilityIdentifier("open-source-pdf")
                     Link(destination: URL(string: "https://github.com/NAM1B0/huadian-quiz-room")!) { Label("项目与更新", systemImage: "arrow.up.right.square") }
                 } header: { Text("关于") } footer: { Text("华电公共题库练习室。离线使用，无需登录。题库按原 PDF 整理，仅供学习，请以官方材料为准。") }
             }.navigationTitle("数据与备份")
@@ -93,34 +93,4 @@ struct BackupsView: View {
             .studyError($problem)
     }
     private func reload() { do { backups = try store.persistence.listBackups() } catch { problem = error.localizedDescription } }
-}
-
-struct PDFScreen: View {
-    let page: Int
-    var embedded = false
-    @Environment(\.dismiss) private var dismiss
-    var body: some View {
-        if embedded { content }
-        else {
-            NavigationStack { content.toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } } }
-        }
-    }
-    private var content: some View {
-        PDFReader(page: page).navigationTitle("题库原文").navigationBarTitleDisplayMode(.inline).ignoresSafeArea(edges: .bottom)
-    }
-}
-
-struct PDFReader: UIViewRepresentable {
-    let page: Int
-    func makeUIView(context: Context) -> PDFView {
-        let view = PDFView(); view.autoScales = true; view.displayDirection = .vertical; view.displayMode = .singlePageContinuous
-        if let url = Bundle.main.url(forResource: "题库原文", withExtension: "pdf"), let document = PDFDocument(url: url) {
-            view.document = document
-            if let target = document.page(at: max(0, min(page - 1, document.pageCount - 1))) {
-                DispatchQueue.main.async { view.go(to: target) }
-            }
-        }
-        return view
-    }
-    func updateUIView(_ uiView: PDFView, context: Context) { }
 }

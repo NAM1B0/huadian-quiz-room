@@ -79,4 +79,42 @@ final class PhoneUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["correct-answer"].exists)
         XCTAssertTrue(app.buttons["option-A"].isEnabled)
     }
+
+    func testPDFDataAndQuestionEntrypointsDisplayAndNavigate() {
+        app.launch(); app.tabBars.buttons["数据"].tap()
+        app.buttons["open-source-pdf"].tap()
+        let status = app.staticTexts["pdf-page-status"]
+        XCTAssertTrue(status.waitForExistence(timeout: 8))
+        XCTAssertTrue(waitForText("40 / 161", element: status))
+        XCTAssertFalse(app.staticTexts["原文暂时无法打开"].exists)
+        shot("11-pdf-from-data-portrait")
+        app.swipeUp()
+        let moved = XCTNSPredicateExpectation(predicate: NSPredicate(format: "NOT (label CONTAINS %@)", "40 / 161"), object: status)
+        XCTAssertEqual(XCTWaiter.wait(for: [moved], timeout: 5), .completed)
+        XCUIDevice.shared.orientation = .landscapeLeft
+        XCTAssertTrue(status.waitForExistence(timeout: 3)); shot("12-pdf-landscape")
+        XCUIDevice.shared.orientation = .portrait
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.tabBars.buttons["题库"].tap(); enter()
+        app.buttons["question-board"].tap()
+        let search = app.textFields["jump-number"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5)); search.tap(); search.typeText("245")
+        app.buttons["board-245"].tap()
+        app.buttons["更多操作"].tap(); app.buttons["查看题库原文"].tap()
+        XCTAssertTrue(status.waitForExistence(timeout: 8))
+        XCTAssertTrue(waitForText("95 / 161", element: status))
+        shot("13-pdf-question-245-page95")
+        app.buttons["完成"].tap()
+        XCTAssertTrue(app.staticTexts["question-number"].label.contains("第 245 题"))
+    }
+
+    func testPDFMissingResourceShowsRetryAndAllowsBack() {
+        app.launchArguments = ["--missing-pdf"]; app.launch()
+        app.tabBars.buttons["数据"].tap(); app.buttons["open-source-pdf"].tap()
+        XCTAssertTrue(app.staticTexts["原文暂时无法打开"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["重试"].isHittable)
+        app.buttons["重试"].tap(); shot("14-pdf-load-error")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.buttons["导出学习记录"].exists)
+    }
 }

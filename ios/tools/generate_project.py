@@ -33,7 +33,10 @@ def configs(key, common, debug=None, release=None):
 app_sources = [ref("Sources/" + p.name, "sourcecode.swift") for p in sorted((ROOT / "Sources").glob("*.swift"))]
 unit_sources = [ref("Tests/" + p.name, "sourcecode.swift") for p in sorted((ROOT / "Tests").glob("*.swift"))]
 ui_sources = [ref("UITests/" + p.name, "sourcecode.swift") for p in sorted((ROOT / "UITests").glob("*.swift"))]
-resources = [ref("../bank.json", "text.json"), ref("../source/题库原文.pdf", "image.pdf"), ref("Assets.xcassets", "folder.assetcatalog"), ref("PrivacyInfo.xcprivacy", "text.xml")]
+resource_folder = ROOT / "Resources"
+resource_folder.mkdir(exist_ok=True)
+(resource_folder / "question-bank.pdf").write_bytes((ROOT.parent / "source" / "题库原文.pdf").read_bytes())
+resources = [ref("../bank.json", "text.json"), ref("Resources/question-bank.pdf", "image.pdf"), ref("Assets.xcassets", "folder.assetcatalog"), ref("PrivacyInfo.xcprivacy", "text.xml")]
 info = ref("Info.plist", "text.plist.xml")
 products = []
 targets = []
@@ -59,7 +62,7 @@ for target, source, product_type, suffix in [
                 "SWIFT_EMIT_LOC_STRINGS": "YES", "LD_RUNPATH_SEARCH_PATHS": ["$(inherited)", "@executable_path/Frameworks"], "GENERATE_INFOPLIST_FILE": "YES"}
     dependencies = []
     if suffix == "app":
-        settings.update({"INFOPLIST_FILE": "Info.plist", "GENERATE_INFOPLIST_FILE": "NO", "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon", "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME": "AccentColor", "MARKETING_VERSION": "1.0.4", "CURRENT_PROJECT_VERSION": "10401", "OTHER_LDFLAGS": ["$(inherited)", "-lsqlite3"]})
+        settings.update({"INFOPLIST_FILE": "Info.plist", "GENERATE_INFOPLIST_FILE": "NO", "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon", "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME": "AccentColor", "MARKETING_VERSION": "1.0.4", "CURRENT_PROJECT_VERSION": "10402", "OTHER_LDFLAGS": ["$(inherited)", "-lsqlite3"]})
     else:
         proxy = add(target + ":proxy", "PBXContainerItemProxy", containerPortal=project_id, proxyType="1", remoteGlobalIDString=ident("target:HuadianQuiz"), remoteInfo="HuadianQuiz")
         dependencies = [add(target + ":dependency", "PBXTargetDependency", target=ident("target:HuadianQuiz"), targetProxy=proxy)]

@@ -23,6 +23,7 @@ Thumbs.db
 # Xcode local state and generated builds
 ios/build/
 ios/DerivedData/
+ios/Resources/question-bank.pdf
 *.xcuserstate
 xcuserdata/
 *.xcresult/
