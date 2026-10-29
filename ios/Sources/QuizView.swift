@@ -281,8 +281,8 @@ struct QuizView: View {
         } catch { problem = error.localizedDescription }
     }
     private var clockDelta: TimeInterval { tickStart.map { max(0, ProcessInfo.processInfo.systemUptime - $0) } ?? 0 }
-    private func startClock() { if activeExam && scene == .active && !pdf && tickStart == nil { tickStart = ProcessInfo.processInfo.systemUptime } }
-    private func resetClock() { tickStart = activeExam && scene == .active && !pdf ? ProcessInfo.processInfo.systemUptime : nil; liveSeconds = 0 }
+    private func startClock() { if activeExam && scene == .active && pdf == nil && tickStart == nil { tickStart = ProcessInfo.processInfo.systemUptime } }
+    private func resetClock() { tickStart = activeExam && scene == .active && pdf == nil ? ProcessInfo.processInfo.systemUptime : nil; liveSeconds = 0 }
     private func flushClock() {
         guard let exam, activeExam, tickStart != nil else { return }
         do { try store.addExamTime(exam.id, seconds: clockDelta); resetClock() } catch { problem = error.localizedDescription }
