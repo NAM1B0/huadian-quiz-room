@@ -330,17 +330,7 @@ struct QuestionBoard: View {
                                 Text(group.type.shortTitle + " · " + group.part + " · " + group.title).font(.headline)
                                 LazyVGrid(columns: [GridItem(.adaptive(minimum: textSize.isAccessibilitySize || items.contains(where: { $0.origin != nil }) ? 86 : 48), spacing: 10)], spacing: 10) {
                                     ForEach(members) { item in
-                                        Button { choose(item.id) } label: {
-                                            VStack(spacing: 3) {
-                                                Text(String(item.question.number)).font(.subheadline.weight(.semibold)).monospacedDigit()
-                                                Image(systemName: item.result.symbol).font(.caption2).foregroundStyle(item.result.color)
-                                                if let origin = item.origin { Text(origin).font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
-                                            }.frame(maxWidth: .infinity, minHeight: 48).padding(.vertical, 2)
-                                                .foregroundStyle(.primary)
-                                                .background(item.result.color.opacity(item.result == .unanswered ? 0.06 : 0.15), in: RoundedRectangle(cornerRadius: 10))
-                                                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(item.id == current ? Color.accentColor : .clear, lineWidth: 2))
-                                        }.buttonStyle(.plain).accessibilityLabel("第 \(item.question.number) 题，\(item.result.title)" + (item.id == current ? "，当前题目" : "") + (item.origin.map { "，考试时间 " + $0 } ?? ""))
-                                            .accessibilityIdentifier("board-" + item.id)
+                                        NumberTile(item: item, isCurrent: item.id == current) { choose(item.id) }
                                     }
                                 }
                             }
@@ -355,5 +345,31 @@ struct QuestionBoard: View {
             }.navigationTitle("题号").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
         }
+    }
+}
+
+private struct NumberTile: View {
+    let item: BoardItem
+    let isCurrent: Bool
+    let choose: () -> Void
+    private var spokenLabel: String {
+        var parts = ["第 \(item.question.number) 题", item.result.title]
+        if isCurrent { parts.append("当前题目") }
+        if let origin = item.origin { parts.append("考试时间 " + origin) }
+        return parts.joined(separator: "，")
+    }
+    var body: some View {
+        Button(action: choose) {
+            VStack(spacing: 3) {
+                Text(String(item.question.number)).font(.subheadline.weight(.semibold)).monospacedDigit()
+                Image(systemName: item.result.symbol).font(.caption2).foregroundStyle(item.result.color)
+                if let origin = item.origin {
+                    Text(origin).font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+            }.frame(maxWidth: .infinity, minHeight: 48).padding(.vertical, 2)
+                .foregroundStyle(.primary)
+                .background(item.result.color.opacity(item.result == .unanswered ? 0.06 : 0.15), in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(isCurrent ? Color.accentColor : Color.clear, lineWidth: 2))
+        }.buttonStyle(.plain).accessibilityLabel(spokenLabel).accessibilityIdentifier("board-" + item.id)
     }
 }

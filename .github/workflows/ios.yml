@@ -29,7 +29,7 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p ios/build
-          xcodebuild build-for-testing -project ios/HuadianQuiz.xcodeproj -scheme HuadianQuiz -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath ios/build/DerivedData CODE_SIGNING_ALLOWED=NO 2>&1 | tee ios/build/compile.txt
+          xcodebuild build-for-testing -project ios/HuadianQuiz.xcodeproj -scheme HuadianQuiz -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath ios/build/DerivedData ARCHS=arm64 CODE_SIGNING_ALLOWED=NO 2>&1 | tee ios/build/compile.txt
       - name: Create iPhone 13 Pro simulator
         timeout-minutes: 10
         run: python3 ios/tools/select_simulator.py
