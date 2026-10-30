@@ -90,7 +90,12 @@ final class PhoneUITests: XCTestCase {
         app.tabBars.buttons["错题"].tap()
         app.segmentedControls["review-source"].buttons.matching(NSPredicate(format: "label BEGINSWITH %@", source)).firstMatch.tap()
         app.segmentedControls["review-kind"].buttons[kind].tap()
-        if autoRemove && app.switches["review-auto-remove"].value as? String == "0" { app.switches["review-auto-remove"].tap() }
+        if autoRemove {
+            let toggle = app.switches["review-auto-remove"]
+            // SwiftUI exposes the whole row as the switch; its center is the label.
+            if toggle.value as? String == "0" { toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap() }
+            XCTAssertEqual(toggle.value as? String, "1", "The removal switch must actually be on")
+        }
         app.buttons["start-review"].tap()
         XCTAssertTrue(app.staticTexts["question-number"].waitForExistence(timeout: 5))
     }
@@ -99,13 +104,15 @@ final class PhoneUITests: XCTestCase {
             enterReview(source, kind: "多选", autoRemove: true)
             let first = app.staticTexts["question-number"].label
             for key in ["A", "B", "C"] { tapOption(key) }
+            XCTAssertTrue(app.buttons["option-A"].isEnabled)
             XCTAssertFalse(app.staticTexts["correct-answer"].exists)
             assertNoAutomaticNext(first)
             app.buttons["next-question"].tap(); app.swipeUp()
             XCTAssertTrue(app.staticTexts["correct-answer"].waitForExistence(timeout: 3))
+            shot("16-" + source + "-multiple-review-checked")
+            XCTAssertFalse(app.buttons["option-A"].isEnabled)
             XCTAssertTrue(app.staticTexts["已从错题集移出"].exists)
             XCTAssertEqual(app.staticTexts["question-number"].label, first)
-            shot("16-" + source + "-multiple-review-checked")
             app.buttons["next-question"].tap()
             XCTAssertTrue(waitForText("第 247 题", element: app.staticTexts["question-number"]))
             app.terminate()

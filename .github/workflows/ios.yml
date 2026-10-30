@@ -1,6 +1,11 @@
 name: iOS 26 build and phone checks
 on:
   workflow_dispatch:
+    inputs:
+      review_only:
+        description: 'Only rerun the multiple-choice review UI case (after a complete run on unchanged app code)'
+        type: boolean
+        default: false
   push:
     branches: [main, ios-v1.0.4]
     paths: ['ios/**', '.github/workflows/ios.yml', 'bank.json', 'source/**']
@@ -40,6 +45,8 @@ jobs:
           xcodebuild test-without-building -project ios/HuadianQuiz.xcodeproj -scheme HuadianQuiz -configuration Debug -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -derivedDataPath ios/build/DerivedData -resultBundlePath ios/build/UnitTests.xcresult -only-testing:HuadianQuizTests -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 60 CODE_SIGNING_ALLOWED=NO 2>&1 | tee ios/build/unit-tests.txt
       - name: Run iPhone interface tests
         timeout-minutes: 15
+        env:
+          REVIEW_ONLY: ${{ inputs.review_only || false }}
         run: |
           set -o pipefail
           # Finish the unit-test host's installation lifecycle before UI automation.
@@ -54,7 +61,9 @@ jobs:
           xcrun simctl terminate "$SIMULATOR_ID" io.github.nam1b0.huadianquiz
           # One retry handles transient hosted-simulator launch failures. Keep all
           # attempt logs so PDF rendering/assertion failures can still be reviewed.
-          xcodebuild test-without-building -project ios/HuadianQuiz.xcodeproj -scheme HuadianQuiz -configuration Debug -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -derivedDataPath ios/build/DerivedData -resultBundlePath ios/build/PhoneTests.xcresult -only-testing:HuadianQuizUITests -parallel-testing-enabled NO -retry-tests-on-failure -test-iterations 2 -test-timeouts-enabled YES -default-test-execution-time-allowance 120 CODE_SIGNING_ALLOWED=NO 2>&1 | tee ios/build/tests.txt
+          test_scope=HuadianQuizUITests
+          if [ "$REVIEW_ONLY" = true ]; then test_scope=HuadianQuizUITests/PhoneUITests/testBothMultipleReviewsCheckBeforeFeedbackAndRemoval; fi
+          xcodebuild test-without-building -project ios/HuadianQuiz.xcodeproj -scheme HuadianQuiz -configuration Debug -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -derivedDataPath ios/build/DerivedData -resultBundlePath ios/build/PhoneTests.xcresult -only-testing:"$test_scope" -parallel-testing-enabled NO -retry-tests-on-failure -test-iterations 2 -test-timeouts-enabled YES -default-test-execution-time-allowance 120 CODE_SIGNING_ALLOWED=NO 2>&1 | tee ios/build/tests.txt
       - name: Export simulator screenshots
         if: always()
         run: |
