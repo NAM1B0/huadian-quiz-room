@@ -44,6 +44,25 @@ struct AppLoader: View {
                 let exam = try loaded.startExam(.judge)
                 for qid in exam.order { try loaded.saveExam(exam.id, qid: qid, choices: loaded.questions[qid]!.answer) }
             }
+            if ProcessInfo.processInfo.arguments.contains("--review-fixture"), loaded.state.mistakes.isEmpty {
+                var fixture = loaded.state; let stamp = Date()
+                for kind in QuestionKind.allCases {
+                    let questions = bank.questions(of: kind); let selected = Array(questions.prefix(2))
+                    let examID = "review-fixture-" + kind.rawValue
+                    var answers = Dictionary(uniqueKeysWithValues: questions.map { ($0.id, $0.answer) })
+                    for q in selected {
+                        let wrong = [q.options.first { !q.answer.contains($0.key) }?.key ?? q.answer[0]]
+                        answers[q.id] = wrong
+                        fixture.practice[q.id] = SavedAnswer(choices: wrong, updated: stamp, checked: true)
+                        for source in MistakeSource.allCases {
+                            let id = source == .practice ? "practice:" + q.id : "exam:" + examID + ":" + q.id
+                            fixture.mistakes.append(MistakeEntry(id: id, source: source, qid: q.id, examID: source == .exam ? examID : nil, original: wrong, review: [], dismissed: false, created: stamp, updated: stamp))
+                        }
+                    }
+                    fixture.exams.append(ExamRecord(id: examID, type: kind, status: .submitted, order: questions.map(\.id), answers: answers, currentQuestion: questions[0].id, elapsed: 1, created: stamp, updated: stamp, submitted: stamp))
+                }
+                try loaded.restore(fixture)
+            }
             #endif
             store = loaded; problem = nil
         } catch { problem = error.localizedDescription }
@@ -72,10 +91,10 @@ extension View {
 
 extension AnswerResult {
     var color: Color {
-        switch self { case .correct: .green; case .wrong: .red; case .partial: .gray; case .answered: .blue; case .unanswered: Color(.tertiaryLabel) }
+        switch self { case .correct: .green; case .wrong: .red; case .partial: .gray; case .answered, .pending: .blue; case .unanswered: Color(.tertiaryLabel) }
     }
     var symbol: String {
-        switch self { case .correct: "checkmark.circle.fill"; case .wrong: "xmark.circle.fill"; case .partial: "minus.circle.fill"; case .answered: "circle.inset.filled"; case .unanswered: "circle" }
+        switch self { case .correct: "checkmark.circle.fill"; case .wrong: "xmark.circle.fill"; case .partial: "minus.circle.fill"; case .answered, .pending: "circle.inset.filled"; case .unanswered: "circle" }
     }
 }
 

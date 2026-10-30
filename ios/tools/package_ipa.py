@@ -15,7 +15,7 @@ with (app / "Info.plist").open("rb") as f:
     info = plistlib.load(f)
 assert info["CFBundleIdentifier"] == "io.github.nam1b0.huadianquiz"
 assert info["CFBundleShortVersionString"] == "1.0.4"
-assert info["CFBundleVersion"] == "10402"
+assert info["CFBundleVersion"] == "10403"
 assert info["DTPlatformName"] == "iphoneos", "Simulator builds cannot be sideloaded"
 assert int(info["MinimumOSVersion"].split(".")[0]) >= 26
 assert info["UIDeviceFamily"] == [1]
@@ -27,7 +27,7 @@ assert pdf.is_file()
 assert pdf.read_bytes() == (Path(__file__).resolve().parents[2] / "source/题库原文.pdf").read_bytes(), "Bundled PDF differs from source"
 assert not list(app.rglob("*.sqlite3")) and not list(app.rglob("study.json")), "Personal data must not ship"
 output.mkdir(parents=True, exist_ok=True)
-ipa = output / "huadian-quiz-room-v1.0.4-ios26-build10402.ipa"
+ipa = output / "huadian-quiz-room-v1.0.4-ios26-build10403.ipa"
 # zipfile sets the ZIP UTF-8 flag for Chinese resource names. Some macOS
 # archivers omit it, causing sideload extractors to rename the bundled PDF.
 with zipfile.ZipFile(ipa, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as package:

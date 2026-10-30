@@ -125,8 +125,16 @@ final class StudyStore: ObservableObject {
     }
     func exam(_ id: String) -> ExamRecord? { state.exams.first { $0.id == id } }
     func mistake(_ id: String) -> MistakeEntry? { state.mistakes.first { $0.id == id } }
+    func practiceResult(_ qid: String) -> AnswerResult {
+        guard let saved = state.practice[qid], !saved.choices.isEmpty else { return .unanswered }
+        return saved.isChecked ? questions[qid]?.result(for: saved.choices) ?? .unanswered : .pending
+    }
+    func reviewResult(_ id: String) -> AnswerResult {
+        guard let item = mistake(id), !item.review.isEmpty else { return .unanswered }
+        return item.isReviewChecked ? questions[item.qid]?.result(for: item.review) ?? .unanswered : .pending
+    }
     func statistics(_ list: [Question]) -> PracticeStatistics {
-        let practiced = list.filter { !(state.practice[$0.id]?.choices ?? []).isEmpty }
+        let practiced = list.filter { state.practice[$0.id]?.isChecked == true }
         let correct = practiced.filter { $0.result(for: state.practice[$0.id]?.choices ?? []) == .correct }.count
         return PracticeStatistics(total: list.count, practiced: practiced.count, correct: correct)
     }
@@ -135,18 +143,23 @@ final class StudyStore: ObservableObject {
         state.mistakes.filter { !$0.dismissed && $0.source == source && (kind == nil || questions[$0.qid]?.type == kind) }
             .sorted { $0.created == $1.created ? (Int($0.qid) ?? 0) < (Int($1.qid) ?? 0) : $0.created > $1.created }
     }
-    func savePractice(_ qid: String, choices: [String]) throws {
+    func savePractice(_ qid: String, choices: [String], check: Bool = false) throws {
         let answer = try validated(choices, qid: qid)
-        if (state.practice[qid]?.choices ?? []) == answer { return }
+        let result = questions[qid]?.result(for: answer)
+        let checked = !answer.isEmpty && (questions[qid]?.type != .multiple || check || result == .correct)
+        if (state.practice[qid]?.choices ?? []) == answer && (answer.isEmpty || state.practice[qid]?.isChecked == checked) { return }
         var next = state; let stamp = Date(); let key = "practice:" + qid
         if answer.isEmpty { next.practice.removeValue(forKey: qid) }
-        else { next.practice[qid] = SavedAnswer(choices: answer, updated: stamp) }
-        if !answer.isEmpty && questions[qid]?.result(for: answer) != .correct {
+        else { next.practice[qid] = SavedAnswer(choices: answer, updated: stamp, checked: checked) }
+        if checked && result != .correct {
             if let index = next.mistakes.firstIndex(where: { $0.id == key }) {
                 next.mistakes[index].original = answer; next.mistakes[index].review = []
+                next.mistakes[index].reviewChecked = false
                 next.mistakes[index].dismissed = false; next.mistakes[index].updated = stamp
             } else { next.mistakes.append(MistakeEntry(id: key, source: .practice, qid: qid, original: answer, review: [], dismissed: false, created: stamp, updated: stamp)) }
-        } else if let index = next.mistakes.firstIndex(where: { $0.id == key }) { next.mistakes[index].dismissed = true; next.mistakes[index].updated = stamp }
+        } else if answer.isEmpty || (checked && result == .correct) {
+            if let index = next.mistakes.firstIndex(where: { $0.id == key }) { next.mistakes[index].dismissed = true; next.mistakes[index].updated = stamp }
+        }
         if let kind = questions[qid]?.type { next.lastPracticeQuestion[kind.rawValue] = qid }
         try commit(next)
     }
@@ -199,11 +212,13 @@ final class StudyStore: ObservableObject {
         try commit(next)
     }
     @discardableResult
-    func review(_ id: String, choices: [String]) throws -> MistakeEntry {
+    func review(_ id: String, choices: [String], check: Bool = false) throws -> MistakeEntry {
         guard let index = state.mistakes.firstIndex(where: { $0.id == id && !$0.dismissed }) else { throw StudyError("这条错题已移出，请返回错题集。") }
         let item = state.mistakes[index]; let answer = try validated(choices, qid: item.qid)
         var next = state; next.mistakes[index].review = answer; next.mistakes[index].updated = Date()
-        next.mistakes[index].dismissed = questions[item.qid]?.result(for: answer) == .correct && state.settings.autoRemove(item.source)
+        let checked = !answer.isEmpty && (questions[item.qid]?.type != .multiple || check)
+        next.mistakes[index].reviewChecked = checked
+        next.mistakes[index].dismissed = checked && questions[item.qid]?.result(for: answer) == .correct && state.settings.autoRemove(item.source)
         try commit(next); return next.mistakes[index]
     }
     func setAutoRemove(_ source: MistakeSource, enabled: Bool) throws {

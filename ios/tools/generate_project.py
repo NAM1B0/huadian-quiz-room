@@ -62,7 +62,7 @@ for target, source, product_type, suffix in [
                 "SWIFT_EMIT_LOC_STRINGS": "YES", "LD_RUNPATH_SEARCH_PATHS": ["$(inherited)", "@executable_path/Frameworks"], "GENERATE_INFOPLIST_FILE": "YES"}
     dependencies = []
     if suffix == "app":
-        settings.update({"INFOPLIST_FILE": "Info.plist", "GENERATE_INFOPLIST_FILE": "NO", "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon", "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME": "AccentColor", "MARKETING_VERSION": "1.0.4", "CURRENT_PROJECT_VERSION": "10402", "OTHER_LDFLAGS": ["$(inherited)", "-lsqlite3"]})
+        settings.update({"INFOPLIST_FILE": "Info.plist", "GENERATE_INFOPLIST_FILE": "NO", "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon", "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME": "AccentColor", "MARKETING_VERSION": "1.0.4", "CURRENT_PROJECT_VERSION": "10403", "OTHER_LDFLAGS": ["$(inherited)", "-lsqlite3"]})
     else:
         proxy = add(target + ":proxy", "PBXContainerItemProxy", containerPortal=project_id, proxyType="1", remoteGlobalIDString=ident("target:HuadianQuiz"), remoteInfo="HuadianQuiz")
         dependencies = [add(target + ":dependency", "PBXTargetDependency", target=ident("target:HuadianQuiz"), targetProxy=proxy)]

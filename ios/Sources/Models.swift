@@ -66,13 +66,19 @@ struct QuestionBank: Codable {
 }
 
 enum AnswerResult: String {
-    case unanswered, correct, partial, wrong, answered
+    case unanswered, correct, partial, wrong, answered, pending
     var title: String {
-        switch self { case .unanswered: "未答"; case .correct: "正确"; case .partial: "漏选"; case .wrong: "错误"; case .answered: "已答" }
+        switch self { case .unanswered: "未答"; case .correct: "正确"; case .partial: "漏选"; case .wrong: "错误"; case .answered: "已答"; case .pending: "待检查" }
     }
 }
 
-struct SavedAnswer: Codable, Equatable { var choices: [String]; var updated: Date }
+struct SavedAnswer: Codable, Equatable {
+    var choices: [String]
+    var updated: Date
+    // Missing in older backups, whose nonempty answers were already graded.
+    var checked: Bool? = nil
+    var isChecked: Bool { !choices.isEmpty && checked != false }
+}
 enum ExamStatus: String, Codable, Hashable { case active, submitted }
 struct ExamRecord: Codable, Identifiable, Equatable {
     var id: String
@@ -105,6 +111,8 @@ struct MistakeEntry: Codable, Identifiable, Equatable {
     var dismissed: Bool
     var created: Date
     var updated: Date
+    var reviewChecked: Bool? = nil
+    var isReviewChecked: Bool { !review.isEmpty && reviewChecked != false }
 }
 
 struct StudySettings: Codable, Equatable {
@@ -165,6 +173,6 @@ func shouldAdvance(mode: QuizMode, kind: QuestionKind, result: AnswerResult, sub
     case .practice: return result == .correct
     case .exam: return kind != .multiple
     case .review(.practice): return kind != .multiple && result == .correct
-    case .review(.exam): return kind != .multiple
+    case .review(.exam): return kind != .multiple && result == .correct
     }
 }

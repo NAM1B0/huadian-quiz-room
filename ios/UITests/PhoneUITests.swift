@@ -46,6 +46,82 @@ final class PhoneUITests: XCTestCase {
         let expectation = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", text), object: element)
         return XCTWaiter.wait(for: [expectation], timeout: 3) == .completed
     }
+    private func tapOption(_ key: String) {
+        let button = app.buttons["option-" + key]
+        if !button.isHittable { app.swipeUp() }
+        XCTAssertTrue(button.isHittable); button.tap()
+    }
+    private func assertNoAutomaticNext(_ number: String) {
+        let changed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", number), object: app.staticTexts["question-number"])
+        XCTAssertEqual(XCTWaiter.wait(for: [changed], timeout: 1.2), .timedOut)
+    }
+    func testMultiplePracticeCheckThenNextAndDraftRestart() {
+        app.launch(); enter("multiple"); tapOption("A")
+        XCTAssertFalse(app.staticTexts["correct-answer"].exists)
+        XCTAssertFalse(app.buttons["option-B"].label.contains("正确选项"))
+        app.terminate(); app.launch(); enter("multiple")
+        XCTAssertTrue(app.buttons["option-A"].label.contains("已选择"))
+        XCTAssertFalse(app.staticTexts["correct-answer"].exists)
+        let first = app.staticTexts["question-number"].label
+        app.buttons["next-question"].tap(); app.swipeUp()
+        XCTAssertTrue(app.staticTexts["correct-answer"].waitForExistence(timeout: 3))
+        XCTAssertEqual(app.staticTexts["question-number"].label, first)
+        shot("15-multiple-practice-checked-stays")
+        tapOption("D"); XCTAssertFalse(app.staticTexts["correct-answer"].exists)
+        app.buttons["next-question"].tap()
+        XCTAssertTrue(app.staticTexts["correct-answer"].exists)
+        XCTAssertEqual(app.staticTexts["question-number"].label, first)
+        app.buttons["next-question"].tap()
+        XCTAssertTrue(waitForText("第 247 题", element: app.staticTexts["question-number"]))
+        for key in ["A", "C", "D"] { tapOption(key) }
+        XCTAssertTrue(waitForText("第 248 题", element: app.staticTexts["question-number"]))
+        app.buttons["question-board"].tap()
+        let search = app.textFields["jump-number"]; search.tap(); search.typeText("426")
+        app.buttons["board-426"].tap(); tapOption("A")
+        XCTAssertTrue(app.buttons["next-question"].isEnabled)
+        app.buttons["next-question"].tap(); app.swipeUp()
+        XCTAssertTrue(app.staticTexts["correct-answer"].exists)
+        XCTAssertTrue(app.staticTexts["question-number"].label.contains("第 426 题"))
+    }
+    private func enterReview(_ source: String, kind: String, autoRemove: Bool = false) {
+        app.launchArguments = ["--review-fixture"]; app.launch()
+        app.tabBars.buttons["错题"].tap()
+        app.segmentedControls["review-source"].buttons.matching(NSPredicate(format: "label BEGINSWITH %@", source)).firstMatch.tap()
+        app.segmentedControls["review-kind"].buttons[kind].tap()
+        if autoRemove && app.switches["review-auto-remove"].value as? String == "0" { app.switches["review-auto-remove"].tap() }
+        app.buttons["start-review"].tap()
+        XCTAssertTrue(app.staticTexts["question-number"].waitForExistence(timeout: 5))
+    }
+    func testBothMultipleReviewsCheckBeforeFeedbackAndRemoval() {
+        for source in ["练习", "考试"] {
+            enterReview(source, kind: "多选", autoRemove: true)
+            let first = app.staticTexts["question-number"].label
+            for key in ["A", "B", "C"] { tapOption(key) }
+            XCTAssertFalse(app.staticTexts["correct-answer"].exists)
+            assertNoAutomaticNext(first)
+            app.buttons["next-question"].tap(); app.swipeUp()
+            XCTAssertTrue(app.staticTexts["correct-answer"].waitForExistence(timeout: 3))
+            XCTAssertTrue(app.staticTexts["已从错题集移出"].exists)
+            XCTAssertEqual(app.staticTexts["question-number"].label, first)
+            shot("16-" + source + "-multiple-review-checked")
+            app.buttons["next-question"].tap()
+            XCTAssertTrue(waitForText("第 247 题", element: app.staticTexts["question-number"]))
+            app.terminate()
+        }
+    }
+    func testBothSingleAndJudgeReviewsOnlyAdvanceWhenCorrect() {
+        for source in ["练习", "考试"] {
+            for (kind, wrong, correct, next) in [("单选", "A", "C", "第 2 题"), ("判断", "B", "A", "第 428 题")] {
+                enterReview(source, kind: kind)
+                let first = app.staticTexts["question-number"].label
+                tapOption(wrong); assertNoAutomaticNext(first)
+                app.swipeUp(); XCTAssertTrue(app.staticTexts["correct-answer"].exists)
+                tapOption(correct)
+                XCTAssertTrue(waitForText(next, element: app.staticTexts["question-number"]))
+                app.terminate()
+            }
+        }
+    }
     func testRecordsStatisticsAndDeletion() {
         app.launchArguments = ["--fixture"]; app.launch()
         app.tabBars.buttons["记录"].tap(); XCTAssertTrue(app.buttons["编辑"].waitForExistence(timeout: 5))

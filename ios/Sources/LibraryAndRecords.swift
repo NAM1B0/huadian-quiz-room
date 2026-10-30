@@ -77,7 +77,7 @@ struct RecordsView: View {
                             }
                         }
                     }
-                    Section { Text("按普通练习的最新答案统计。正确率＝答对数÷已练习题数；错题复习不改变这些统计。").font(.footnote).foregroundStyle(.secondary) }
+                    Section { Text("按普通练习最新检查结果统计。正确率＝答对数÷已练习题数；待检查多选不计入，错题复习不改变统计。").font(.footnote).foregroundStyle(.secondary) }
                 } else {
                     Section {
                         Picker("考试状态", selection: $filter) { Text("全部").tag("all"); Text("未交卷").tag("active"); Text("已交卷").tag("submitted") }.pickerStyle(.segmented)
@@ -157,17 +157,17 @@ struct MistakesView: View {
                     Picker("错题来源", selection: $source) {
                         Text("练习 \(store.visibleMistakes(.practice).count)").tag(MistakeSource.practice)
                         Text("考试 \(store.visibleMistakes(.exam).count)").tag(MistakeSource.exam)
-                    }.pickerStyle(.segmented)
-                    Picker("题型", selection: $kind) { Text("全部").tag(QuestionKind?.none); ForEach(QuestionKind.allCases) { Text($0.shortTitle).tag(Optional($0)) } }.pickerStyle(.segmented)
+                    }.pickerStyle(.segmented).accessibilityIdentifier("review-source")
+                    Picker("题型", selection: $kind) { Text("全部").tag(QuestionKind?.none); ForEach(QuestionKind.allCases) { Text($0.shortTitle).tag(Optional($0)) } }.pickerStyle(.segmented).accessibilityIdentifier("review-kind")
                     Toggle("答对后自动移出", isOn: Binding(get: { store.state.settings.autoRemove(source) }, set: { enabled in
                         do { try store.setAutoRemove(source, enabled: enabled) } catch { problem = error.localizedDescription }
-                    }))
+                    })).accessibilityIdentifier("review-auto-remove")
                 } footer: { Text(source == .practice ? "普通练习中改对会移出；这里复习答对时，由开关控制。" : "每场考试的错题分别保留；后续考试答对不会覆盖。") }
                 if entries.isEmpty {
                     ContentUnavailableView("暂无错题", systemImage: "checkmark.seal", description: Text("继续练习，或切换分类查看。"))
                 } else {
                     Section {
-                        NavigationLink(value: store.makeRoute(.review(source), filter: kind)) { Label("开始复习 · \(entries.count) 题", systemImage: "play.fill").font(.headline) }
+                        NavigationLink(value: store.makeRoute(.review(source), filter: kind)) { Label("开始复习 · \(entries.count) 题", systemImage: "play.fill").font(.headline) }.accessibilityIdentifier("start-review")
                     }
                     Section {
                         ForEach(entries) { entry in
@@ -178,7 +178,7 @@ struct MistakesView: View {
                                         Text(question.text).font(.body).lineLimit(2)
                                         HStack {
                                             Text("原选 " + choiceText(entry.original)).font(.caption).foregroundStyle(.secondary)
-                                            if question.result(for: entry.review) == .correct { ResultLabel(result: .correct) }
+                                            if store.reviewResult(entry.id) == .correct { ResultLabel(result: .correct) }
                                         }
                                         if let examID = entry.examID, let exam = store.exam(examID) { Text(exam.created, format: .dateTime.month().day().hour().minute()).font(.caption).foregroundStyle(.secondary) }
                                     }.padding(.vertical, 6)

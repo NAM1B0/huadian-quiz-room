@@ -36,6 +36,9 @@ struct QuizView: View {
         switch route.mode { case .practice, .review(.practice): true; default: false }
     }
     private var choices: [String] { answer(for: key) }
+    private var result: AnswerResult { result(for: key) }
+    private var needsCheck: Bool { result == .pending }
+    private var graded: Bool { [.correct, .partial, .wrong].contains(result) }
     private var position: Int { (route.keys.firstIndex(of: key) ?? 0) + 1 }
     private var title: String {
         switch route.mode {
@@ -144,8 +147,13 @@ struct QuizView: View {
                     }
                 } else if showAnswers || !choices.isEmpty {
                     VStack(alignment: .leading, spacing: 10) {
-                        if !choices.isEmpty { ResultLabel(result: q.result(for: choices)).accessibilityIdentifier("answer-result") }
-                        Text("正确答案：" + choiceText(q.answer)).font(.headline).accessibilityIdentifier("correct-answer")
+                        if !choices.isEmpty { ResultLabel(result: result).accessibilityIdentifier("answer-result") }
+                        if showAnswers || graded {
+                            Text("正确答案：" + choiceText(q.answer)).font(.headline).accessibilityIdentifier("correct-answer")
+                        }
+                        if needsCheck {
+                            Text("已保存。点“下一题”检查，再点一次翻题。").font(.subheadline).foregroundStyle(.secondary)
+                        }
                         if let review { Text("原选择：" + choiceText(review.original)).font(.subheadline).foregroundStyle(.secondary) }
                         if review?.dismissed == true { Label("已从错题集移出", systemImage: "checkmark").font(.subheadline) }
                     }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
@@ -162,9 +170,9 @@ struct QuizView: View {
 
     private func optionButton(_ option: QuestionOption, question q: Question) -> some View {
         let selected = choices.contains(option.key)
-        let reveal = !activeExam && (showAnswers || !choices.isEmpty)
+        let reveal = !activeExam && (showAnswers || graded)
         let correctOption = reveal && q.answer.contains(option.key)
-        let wrongOption = reveal && selected && !q.answer.contains(option.key)
+        let wrongOption = graded && selected && !q.answer.contains(option.key)
         let stroke: Color = correctOption ? .green : wrongOption ? .red : selected ? .accentColor : Color(.separator)
         let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10)) : AnyLayout(HStackLayout(alignment: .top, spacing: 12))
         return Button {
@@ -200,8 +208,9 @@ struct QuizView: View {
                 .disabled(neighbor(-1) == nil).accessibilityIdentifier("previous-question")
             Button { cancelAdvance(); board = true } label: { navigationLabel("题号", symbol: "square.grid.3x3") }
                 .accessibilityIdentifier("question-board")
-            Button { move(1) } label: { navigationLabel("下一题", symbol: "chevron.right") }
-                .disabled(neighbor(1) == nil).accessibilityIdentifier("next-question")
+            Button { nextQuestion() } label: {
+                navigationLabel(neighbor(1) == nil && needsCheck ? "检查答案" : neighbor(1) == nil && review?.dismissed == true ? "返回错题" : "下一题", symbol: "chevron.right")
+            }.disabled(neighbor(1) == nil && !needsCheck && review?.dismissed != true).accessibilityIdentifier("next-question")
         }.font(.subheadline.weight(.semibold)).buttonStyle(.bordered).padding(.horizontal, 12).padding(.vertical, 8).background(.bar)
     }
     private func navigationLabel(_ title: String, symbol: String) -> some View {
@@ -221,13 +230,21 @@ struct QuizView: View {
         case .review: return store.mistake(item)?.review ?? []
         }
     }
+    private func result(for item: String) -> AnswerResult {
+        switch route.mode {
+        case .practice: return store.practiceResult(item)
+        case .review: return store.reviewResult(item)
+        case .exam:
+            let selected = answer(for: item)
+            return activeExam && !selected.isEmpty ? .answered : store.questions[item]?.result(for: selected) ?? .unanswered
+        }
+    }
     private var boardItems: [BoardItem] {
         route.keys.compactMap { item in
             let mistake: MistakeEntry? = { if case .review = route.mode { return store.mistake(item) }; return nil }()
             guard mistake?.dismissed != true, let q = store.questions[mistake?.qid ?? item] else { return nil }
-            let selected = answer(for: item)
             let origin = mistake?.examID.flatMap { store.exam($0)?.created.formatted(.dateTime.month(.twoDigits).day(.twoDigits).hour().minute()) }
-            return BoardItem(id: item, question: q, result: activeExam && !selected.isEmpty ? .answered : q.result(for: selected), origin: origin)
+            return BoardItem(id: item, question: q, result: result(for: item), origin: origin)
         }
     }
     private func neighbor(_ direction: Int) -> String? {
@@ -244,6 +261,12 @@ struct QuizView: View {
     }
     private func cancelAdvance() { pending?.cancel(); pending = nil }
     private func move(_ direction: Int) { cancelAdvance(); if let next = neighbor(direction) { jump(next) } }
+    private func nextQuestion() {
+        cancelAdvance()
+        if needsCheck { save(choices, check: true); return }
+        if let next = neighbor(1) { jump(next) }
+        else if review?.dismissed == true { dismiss() }
+    }
     private func jump(_ next: String) {
         cancelAdvance()
         guard route.keys.contains(next) else { return }
@@ -256,16 +279,16 @@ struct QuizView: View {
             key = next
         } catch { problem = error.localizedDescription }
     }
-    private func save(_ next: [String]) {
+    private func save(_ next: [String], check: Bool = false) {
         cancelAdvance()
         guard !locked, let q = question else { return }
         do {
             switch route.mode {
-            case .practice: try store.savePractice(q.id, choices: next)
+            case .practice: try store.savePractice(q.id, choices: next, check: check)
             case .exam(let id): try store.saveExam(id, qid: q.id, choices: next, elapsed: clockDelta); resetClock()
-            case .review: try store.review(key, choices: next)
+            case .review: try store.review(key, choices: next, check: check)
             }
-            if shouldAdvance(mode: route.mode, kind: q.type, result: q.result(for: next), submitted: exam?.status == .submitted) {
+            if !check && shouldAdvance(mode: route.mode, kind: q.type, result: result, submitted: exam?.status == .submitted) {
                 let savedKey = key
                 let delay = UIAccessibility.isVoiceOverRunning ? 1600 : 650
                 if UIAccessibility.isVoiceOverRunning && !activeExam {
@@ -319,9 +342,10 @@ struct QuestionBoard: View {
                             Button("去未答") { choose(unanswered.id) }.frame(minHeight: 44).font(.subheadline)
                         }
                     }
-                    HStack(spacing: 14) {
+                    let legendLayout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(spacing: 14))
+                    legendLayout {
                         if activeExam { ResultLabel(result: .answered); ResultLabel(result: .unanswered) }
-                        else { ResultLabel(result: .correct); ResultLabel(result: .wrong); ResultLabel(result: .partial) }
+                        else { ResultLabel(result: .correct); ResultLabel(result: .wrong); ResultLabel(result: .partial); ResultLabel(result: .pending) }
                     }.accessibilityElement(children: .combine)
                     ForEach(groups) { group in
                         let members = filtered.filter { $0.question.group == group.id }

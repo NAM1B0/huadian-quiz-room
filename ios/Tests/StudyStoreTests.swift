@@ -152,14 +152,111 @@ final class StudyStoreTests: XCTestCase {
 
     func testAutoAdvanceMatrix() {
         for kind in QuestionKind.allCases {
-            for result in [AnswerResult.correct, .wrong, .partial, .unanswered] {
+            for result in [AnswerResult.correct, .wrong, .partial, .unanswered, .pending, .answered] {
                 XCTAssertEqual(shouldAdvance(mode: .practice(kind), kind: kind, result: result), result == .correct)
                 XCTAssertEqual(shouldAdvance(mode: .exam("test"), kind: kind, result: result), kind != .multiple && result != .unanswered)
                 XCTAssertEqual(shouldAdvance(mode: .review(.practice), kind: kind, result: result), kind != .multiple && result == .correct)
-                XCTAssertEqual(shouldAdvance(mode: .review(.exam), kind: kind, result: result), kind != .multiple && result != .unanswered)
+                XCTAssertEqual(shouldAdvance(mode: .review(.exam), kind: kind, result: result), kind != .multiple && result == .correct)
                 XCTAssertFalse(shouldAdvance(mode: .exam("test"), kind: kind, result: result, submitted: true))
             }
         }
+    }
+
+    func testMultiplePracticeDefersGradingAndPersistsDraft() throws {
+        let disk = MemoryPersistence(); let store = try makeStore(disk)
+        let q = try XCTUnwrap(store.questions["246"]); let partial = [q.answer[0]]
+        try store.savePractice(q.id, choices: partial)
+        XCTAssertEqual(store.practiceResult(q.id), .pending)
+        XCTAssertEqual(store.statistics(store.bank.questions).practiced, 0)
+        XCTAssertTrue(store.visibleMistakes(.practice).isEmpty)
+        let resumed = try makeStore(disk)
+        XCTAssertEqual(resumed.state.practice[q.id]?.choices, partial)
+        XCTAssertEqual(resumed.practiceResult(q.id), .pending)
+        try resumed.savePractice(q.id, choices: partial, check: true)
+        XCTAssertEqual(resumed.practiceResult(q.id), .partial)
+        XCTAssertEqual(resumed.statistics(store.bank.questions).practiced, 1)
+        XCTAssertEqual(resumed.visibleMistakes(.practice).count, 1)
+        try resumed.savePractice(q.id, choices: ["D"])
+        XCTAssertEqual(resumed.practiceResult(q.id), .pending)
+        XCTAssertEqual(resumed.visibleMistakes(.practice).first?.original, partial)
+        try resumed.savePractice(q.id, choices: q.answer)
+        XCTAssertEqual(resumed.practiceResult(q.id), .correct)
+        XCTAssertTrue(resumed.visibleMistakes(.practice).isEmpty)
+        try resumed.savePractice(q.id, choices: partial)
+        XCTAssertEqual(resumed.practiceResult(q.id), .pending)
+        XCTAssertTrue(resumed.visibleMistakes(.practice).isEmpty)
+    }
+
+    func seedMultipleReview(_ store: StudyStore, source: MistakeSource) throws -> String {
+        let q = try XCTUnwrap(store.questions["246"])
+        if source == .practice {
+            try store.savePractice(q.id, choices: ["D"], check: true)
+            return "practice:" + q.id
+        }
+        let stamp = Date(); let order = store.bank.questions(of: .multiple).map(\.id)
+        var answers = Dictionary(uniqueKeysWithValues: order.map { ($0, store.questions[$0]!.answer) })
+        answers[q.id] = ["D"]
+        var state = store.state
+        state.exams.append(ExamRecord(id: "fixture", type: .multiple, status: .submitted, order: order, answers: answers, currentQuestion: q.id, elapsed: 1, created: stamp, updated: stamp, submitted: stamp))
+        let key = "exam:fixture:" + q.id
+        state.mistakes.append(MistakeEntry(id: key, source: .exam, qid: q.id, examID: "fixture", original: ["D"], review: [], dismissed: false, created: stamp, updated: stamp))
+        try store.restore(state); return key
+    }
+
+    func testBothReviewSourcesOnlyGradeOrRemoveAfterExplicitCheck() throws {
+        for source in MistakeSource.allCases {
+            let disk = MemoryPersistence(); let store = try makeStore(disk)
+            let key = try seedMultipleReview(store, source: source)
+            let q = try XCTUnwrap(store.questions["246"])
+            try store.setAutoRemove(source, enabled: true)
+            let original = store.state.practice
+            try store.review(key, choices: q.answer)
+            XCTAssertEqual(store.reviewResult(key), .pending)
+            XCTAssertFalse(try XCTUnwrap(store.mistake(key)).dismissed)
+            let resumed = try makeStore(disk)
+            XCTAssertEqual(resumed.reviewResult(key), .pending)
+            try resumed.review(key, choices: ["A"], check: true)
+            XCTAssertEqual(resumed.reviewResult(key), .partial)
+            try resumed.review(key, choices: q.answer)
+            XCTAssertEqual(resumed.reviewResult(key), .pending)
+            XCTAssertFalse(try XCTUnwrap(resumed.mistake(key)).dismissed)
+            try resumed.review(key, choices: q.answer, check: true)
+            XCTAssertEqual(resumed.reviewResult(key), .correct)
+            XCTAssertTrue(try XCTUnwrap(resumed.mistake(key)).dismissed)
+            XCTAssertEqual(resumed.state.practice, original)
+        }
+    }
+
+    func testLegacyBackupAnswersRemainGradedAndNewDraftRoundTrips() throws {
+        let store = try makeStore(); let stamp = Date()
+        var legacy = store.state
+        legacy.practice["246"] = SavedAnswer(choices: ["A"], updated: stamp)
+        legacy.mistakes.append(MistakeEntry(id: "practice:246", source: .practice, qid: "246", original: ["A"], review: ["A", "B", "C"], dismissed: false, created: stamp, updated: stamp))
+        let bytes = try StudyStore.encoder().encode(legacy)
+        XCTAssertFalse(String(decoding: bytes, as: UTF8.self).contains("Checked"))
+        try store.restore(store.decodeImport(bytes))
+        XCTAssertEqual(store.practiceResult("246"), .partial)
+        XCTAssertEqual(store.reviewResult("practice:246"), .correct)
+        try store.savePractice("246", choices: ["B"])
+        try store.review("practice:246", choices: ["B"])
+        let exported = try store.export()
+        try store.restore(store.decodeImport(exported))
+        XCTAssertEqual(store.practiceResult("246"), .pending)
+        XCTAssertEqual(store.reviewResult("practice:246"), .pending)
+    }
+
+    func testFailedExplicitCheckKeepsDraftAndMistakesUnchanged() throws {
+        let disk = MemoryPersistence(); let store = try makeStore(disk)
+        let key = try seedMultipleReview(store, source: .practice)
+        try store.review(key, choices: ["A", "B", "C"])
+        try store.savePractice("247", choices: ["A"])
+        try store.setAutoRemove(.practice, enabled: true)
+        let before = store.state; disk.failWrites = true
+        XCTAssertThrowsError(try store.review(key, choices: ["A", "B", "C"], check: true))
+        XCTAssertThrowsError(try store.savePractice("247", choices: ["A"], check: true))
+        XCTAssertEqual(store.state, before)
+        XCTAssertEqual(store.practiceResult("247"), .pending)
+        XCTAssertEqual(store.reviewResult(key), .pending)
     }
 
     func testDiskRoundTripAndClockBounds() throws {
@@ -181,17 +278,22 @@ final class StudyStoreTests: XCTestCase {
         XCTAssertEqual(sqlite3_open(url.path, &db), SQLITE_OK)
         defer { sqlite3_close(db) }
         let sql = """
-        CREATE TABLE practice(qid TEXT,answer TEXT,updated TEXT);
+        CREATE TABLE practice(qid TEXT,answer TEXT,correct INTEGER,updated TEXT);
         CREATE TABLE exams(id TEXT,type TEXT,status TEXT,ordering TEXT,answers TEXT,current_q TEXT,elapsed REAL,created TEXT,updated TEXT,submitted TEXT);
-        CREATE TABLE mistakes(id TEXT,source TEXT,qid TEXT,exam_id TEXT,original TEXT,review TEXT,dismissed INTEGER,created TEXT,updated TEXT);
+        CREATE TABLE mistakes(id TEXT,source TEXT,qid TEXT,exam_id TEXT,original TEXT,review TEXT,review_correct INTEGER,dismissed INTEGER,created TEXT,updated TEXT);
         CREATE TABLE settings(key TEXT,value TEXT);
-        INSERT INTO practice VALUES('1','["C"]','2026-10-29T10:12:00+08:00');
+        INSERT INTO practice VALUES('1','["C"]',1,'2026-10-29T10:12:00+08:00');
+        INSERT INTO practice VALUES('246','["A"]',NULL,'2026-10-30T10:12:00+08:00');
+        INSERT INTO mistakes VALUES('practice:246','practice','246',NULL,'["D"]','["A","B","C"]',NULL,0,'2026-10-30T10:12:00+08:00','2026-10-30T10:12:00+08:00');
         INSERT INTO settings VALUES('autoRemove:practice','true');
         """
         XCTAssertEqual(sqlite3_exec(db, sql, nil, nil, nil), SQLITE_OK)
         let store = try makeStore(); let imported = try WindowsBackupImporter.read(url: url, bankID: store.bank.id)
         try store.validate(imported); try store.restore(imported)
         XCTAssertEqual(store.state.practice["1"]?.choices, ["C"])
+        XCTAssertEqual(store.practiceResult("1"), .correct)
+        XCTAssertEqual(store.practiceResult("246"), .pending)
+        XCTAssertEqual(store.reviewResult("practice:246"), .pending)
         XCTAssertTrue(store.state.settings.autoRemovePractice)
     }
 }
