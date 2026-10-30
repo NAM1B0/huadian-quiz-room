@@ -51,9 +51,9 @@ open ios/HuadianQuiz.xcodeproj
 
 项目包含应用、单元测试与原生 UI 测试，不使用第三方依赖。应用标识为 `io.github.nam1b0.huadianquiz`，版本 1.0.4，构建号 10403。生成项目时，会从仓库原 PDF 生成 `ios/Resources/question-bank.pdf`；这个派生副本不纳入 Git。真机开发可在 Xcode 选择自己的 Team；CI 使用 `CODE_SIGNING_ALLOWED=NO`。
 
-GitHub Actions 的 `iOS 26 build and phone checks` 工作流在 macOS 上创建 iPhone 13 Pro 模拟器，执行数据逻辑与 UI 测试、导出原生截图，最后归档 arm64 真机应用并生成 IPA、SHA-256 和构建信息。该流程仅在编译及测试成功后上传 IPA。另有手动工作流 `iOS device package (manual)` 用于独立生成候选包，不代替手机界面测试。模拟器验证不能替代实体 iPhone 上的侧载和使用验证。
+GitHub Actions 的 `iOS 26 build and phone checks` 工作流在 macOS 上创建 iPhone 13 Pro 模拟器，执行数据逻辑与 UI 测试、导出原生截图，最后归档 arm64 真机应用并生成 IPA、SHA-256 和构建信息。该流程仅在编译及所选测试成功后上传 IPA。正常推送执行完整 UI 测试；手动的 review_only 选项仅用于在应用代码未变、完整回归已执行后补测多选错题，不能独立当作全套 UI 验证。另有手动工作流 `iOS device package (manual)` 用于独立生成候选包，不代替手机界面测试。模拟器验证不能替代实体 iPhone 上的侧载和使用验证。
 
-构建 10403 正在执行云端验证。上一构建的验证记录见 [构建 10402](TESTING-10402.md)，初版移植记录见 [构建 10401](TESTING.md)。当前 IPA 的所有包内路径均为 ASCII，PDF 内容与原文逐字节一致。可自行核验安装包：
+构建 10403 通过 18 项单元测试与 10 项原生 UI 场景（完整回归与定向补测，应用代码一致），详见 [构建 10403 验证记录](TESTING-10403.md)。此前记录保留在 [构建 10402](TESTING-10402.md) 和 [构建 10401](TESTING.md)。当前 IPA 的所有包内路径均为 ASCII，PDF 内容与原文逐字节一致。可自行核验安装包：
 
 ```sh
 python3 ios/tools/verify_ipa.py path/to/huadian-quiz-room-v1.0.4-ios26-build10403.ipa --build 10403
