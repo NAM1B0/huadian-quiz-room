@@ -144,12 +144,51 @@ class Acceptance(unittest.TestCase):
         qid = "246"
         answer = QUESTIONS[qid]["answer"]
         self.assertGreater(len(answer), 1)
-        self.assertFalse(self.store.save_practice(qid, answer[:1])["correct"])
+        self.assertIsNone(self.store.save_practice(qid, answer[:1])["correct"])
+        self.assertFalse(self.store.save_practice(qid, answer[:1], check=True)["correct"])
         self.assertTrue(self.store.save_practice(qid, list(reversed(answer)))["correct"])
         self.assertIsNone(self.store.save_practice(qid, []))
         self.assertNotIn(qid, self.store.bootstrap()["practice"])
         with self.assertRaises(UserError):
             self.store.save_practice("1", ["A", "B"])
+
+    def test_multiple_practice_drafts_do_not_reveal_or_create_mistakes(self):
+        s, qid = self.store, "246"
+        full = QUESTIONS[qid]["answer"]
+        result = s.save_practice(qid, full[:1])
+        self.assertIsNone(result["correct"])
+        self.assertIsNone(result["correctAnswer"])
+        self.assertEqual(s.mistakes(), [])
+        s = Store(self.temp.name)
+        self.assertIsNone(s.bootstrap()["practice"][qid]["correct"])
+        self.assertFalse(s.save_practice(qid, full[:1], check=True)["correct"])
+        self.assertEqual(len(s.mistakes()), 1)
+        old_mistake = s.mistakes()[0]
+        self.assertIsNone(s.save_practice(qid, full[:2])["correct"])
+        self.assertEqual(s.mistakes()[0], old_mistake)
+        self.assertTrue(s.save_practice(qid, full)["correct"])
+        self.assertEqual(s.mistakes(), [])
+
+    def test_both_multiple_review_sources_wait_for_check_even_when_fully_correct(self):
+        s, qid = self.store, "246"
+        full = QUESTIONS[qid]["answer"]
+        s.save_practice(qid, full[:1], check=True)
+        exam = s.start_exam("multiple")
+        self.fill(exam, {qid})
+        s.submit(exam["id"])
+        original = s.bootstrap()["practice"]
+        for source in ("practice", "exam"):
+            mid = next(m["id"] for m in s.mistakes(source) if m["qid"] == qid)
+            s.settings("autoRemove:" + source, True)
+            for choices in (full[:1], full):
+                draft = s.review(mid, choices)
+                self.assertIsNone(draft["correct"])
+                self.assertIsNone(draft["correctAnswer"])
+                self.assertFalse(draft["removed"])
+            restored = next(m for m in Store(self.temp.name).mistakes(source) if m["id"] == mid)
+            self.assertIsNone(restored["reviewCorrect"])
+            self.assertTrue(s.review(mid, full, check=True)["removed"])
+        self.assertEqual(s.bootstrap()["practice"], original)
 
     def test_group_shuffle_resume_hidden_answers_and_unfinished_guard(self):
         s = self.store
@@ -295,6 +334,18 @@ class Acceptance(unittest.TestCase):
             req.add_header("X-App-Token", b["token"])
             with urllib.request.urlopen(req) as r:
                 self.assertEqual(json.load(r)["answer"], ["A"])
+            for route, payload in (
+                ("/api/practice", {"qid": "246", "answer": ["A"]}),
+                ("/api/practice", {"qid": "246", "answer": ["A"], "check": True}),
+                ("/api/review", {"id": "practice:246", "answer": QUESTIONS["246"]["answer"]}),
+                ("/api/review", {"id": "practice:246", "answer": QUESTIONS["246"]["answer"], "check": True}),
+            ):
+                request = urllib.request.Request(base + route, data=json.dumps(payload).encode(),
+                    headers={"Content-Type": "application/json", "X-App-Token": b["token"]})
+                with urllib.request.urlopen(request) as r:
+                    result = json.load(r)
+                self.assertEqual(result["correct"] is not None, payload.get("check", False))
+                self.assertEqual(result["correctAnswer"] is not None, payload.get("check", False))
             with urllib.request.urlopen(base + "/api/backup") as r:
                 self.assertTrue(r.read().startswith(b"SQLite format 3"))
             eid = self.store.start_exam("single")["id"]

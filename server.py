@@ -115,26 +115,30 @@ class Store:
         for row in db.execute("SELECT * FROM practice"):
             answer = json.loads(row["answer"])
             if answer:
-                result[row["qid"]] = {"answer": answer, "correct": bool(row["correct"]),
-                                      "correctAnswer": QUESTIONS[row["qid"]]["answer"], "updated": row["updated"]}
+                result[row["qid"]] = {"answer": answer, "correct": bool(row["correct"]) if row["correct"] is not None else None,
+                                      "correctAnswer": QUESTIONS[row["qid"]]["answer"] if row["correct"] is not None else None, "updated": row["updated"]}
         return result
 
-    def save_practice(self, qid, answer):
+    def save_practice(self, qid, answer, check=False):
+        if not isinstance(check, bool):
+            raise UserError("检查答案参数不正确。")
         qid = str(qid)
         answer = validate_choice(qid, answer)
         correct = answer == QUESTIONS[qid]["answer"] if answer else None
+        if QUESTIONS[qid]["type"] == "multiple" and not check and correct is not True:
+            correct = None
         with self.connect() as db:
             previous = db.execute("SELECT * FROM practice WHERE qid=?", (qid,)).fetchone()
-            if previous and json.loads(previous["answer"]) == answer:
+            if previous and json.loads(previous["answer"]) == answer and previous["correct"] == correct:
                 return self.practice_map(db).get(qid)
             revision = (previous["revision"] if previous else 0) + 1
             db.execute("INSERT OR REPLACE INTO practice VALUES(?,?,?,?,?)", (qid, dumps(answer), correct, now(), revision))
-            if answer and not correct:
+            if answer and correct is False:
                 mid = "practice:" + qid
                 db.execute("""INSERT INTO mistakes(id,source,qid,original,created,updated) VALUES(?,?,?,?,?,?)
                     ON CONFLICT(id) DO UPDATE SET original=excluded.original,review='[]',review_correct=NULL,
                     dismissed=0,updated=excluded.updated""", (mid, "practice", qid, dumps(answer), now(), now()))
-            else:
+            elif not answer or correct is True:
                 db.execute("UPDATE mistakes SET dismissed=1,updated=? WHERE id=?", (now(), "practice:" + qid))
             return self.practice_map(db).get(qid)
 
@@ -283,21 +287,25 @@ class Store:
                                "examId": row["exam_id"], "examCreated": row["exam_created"],
                                "original": json.loads(row["original"]), "review": json.loads(row["review"]),
                                "reviewCorrect": bool(row["review_correct"]) if row["review_correct"] is not None else None,
-                               "correctAnswer": QUESTIONS[row["qid"]]["answer"] if json.loads(row["review"]) else None,
+                               "correctAnswer": QUESTIONS[row["qid"]]["answer"] if row["review_correct"] is not None else None,
                                "created": row["created"], "updated": row["updated"]})
             return result
 
-    def review(self, mid, answer):
+    def review(self, mid, answer, check=False):
+        if not isinstance(check, bool):
+            raise UserError("检查答案参数不正确。")
         with self.connect() as db:
             row = db.execute("SELECT * FROM mistakes WHERE id=?", (mid,)).fetchone()
             if not row or row["dismissed"]:
                 raise UserError("这条错题已移出错题集，请刷新列表。", 409)
             answer = validate_choice(row["qid"], answer)
             correct = answer == QUESTIONS[row["qid"]]["answer"] if answer else None
+            if QUESTIONS[row["qid"]]["type"] == "multiple" and not check:
+                correct = None
             setting = db.execute("SELECT value FROM settings WHERE key=?", ("autoRemove:" + row["source"],)).fetchone()
             removed = bool(correct and setting and json.loads(setting["value"]))
             db.execute("UPDATE mistakes SET review=?,review_correct=?,dismissed=?,updated=? WHERE id=?", (dumps(answer), correct, removed, now(), mid))
-            return {"answer": answer, "correct": correct, "correctAnswer": QUESTIONS[row["qid"]]["answer"] if answer else None, "removed": removed}
+            return {"answer": answer, "correct": correct, "correctAnswer": QUESTIONS[row["qid"]]["answer"] if correct is not None else None, "removed": removed}
 
     def settings(self, key=None, value=None):
         with self.connect() as db:
@@ -405,7 +413,7 @@ class Handler(BaseHTTPRequestHandler):
             p, store = payload, self.server.store
             route = urllib.parse.urlsplit(self.path).path
             if route == "/api/practice":
-                result = store.save_practice(p["qid"], p["answer"])
+                result = store.save_practice(p["qid"], p["answer"], p.get("check", False))
             elif route == "/api/exam/start":
                 result = store.start_exam(p["type"])
             elif route == "/api/exam/answer":
@@ -419,7 +427,7 @@ class Handler(BaseHTTPRequestHandler):
             elif route == "/api/exam/delete":
                 result = store.delete_exams(p["ids"])
             elif route == "/api/review":
-                result = store.review(p["id"], p["answer"])
+                result = store.review(p["id"], p["answer"], p.get("check", False))
             elif route == "/api/settings":
                 result = store.settings(p["key"], p["value"])
             elif route == "/api/shutdown":

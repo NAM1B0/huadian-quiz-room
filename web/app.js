@@ -36,6 +36,7 @@ const pendingAnswers = new Map();
 let saveCount = 0, choiceRevision = 0;
 let practiceSession = null;
 let autoAdvanceTimer = null;
+let checkingAnswer = false;
 
 async function api(path, payload){
   const response = await fetch(path, payload === undefined ? {cache:"no-store"} : {method:"POST", keepalive:true, headers:{"Content-Type":"application/json","X-App-Token":token || ""},body:JSON.stringify(payload)});
@@ -67,9 +68,9 @@ function heading(title,desc,eyebrow="学习空间",right=""){return `<div class=
 function home(){
   const examMode=homeMode==='exam';
   return heading("公共与行业知识", "按题型进入，沿原题库的六个部分逐步完成。练习进度自动保存，随时接着做。", "中国华电 · 招聘考试题库",'<span class="edition">2026 版</span>')+
-  `<div class="mode-line"><div class="segmented" aria-label="刷题模式"><button data-action="mode" data-value="practice" class="${!examMode?'active':''}" aria-pressed="${!examMode}">${icon('book')}练习模式</button><button data-action="mode" data-value="exam" class="${examMode?'active':''}" aria-pressed="${examMode}">${icon('clock')}考试模式</button></div><span class="mode-description">${examMode?'组内随机出题 · 正向计时 · 全部作答后交卷':'不计时 · 即时查看对错 · 随时修改答案'}</span></div>
+  `<div class="mode-line"><div class="segmented" aria-label="刷题模式"><button data-action="mode" data-value="practice" class="${!examMode?'active':''}" aria-pressed="${!examMode}">${icon('book')}练习模式</button><button data-action="mode" data-value="exam" class="${examMode?'active':''}" aria-pressed="${examMode}">${icon('clock')}考试模式</button></div><span class="mode-description">${examMode?'组内随机出题 · 正向计时 · 全部作答后交卷':'不计时 · 按题型检查答案 · 随时修改答案'}</span></div>
   <div class="type-grid">${Object.entries(labels).map(([type,label])=>{
-    const ids=questionIds(type), p=ids.filter(id=>data.practice[id]), good=p.filter(id=>data.practice[id].correct).length;
+    const ids=questionIds(type), p=ids.filter(id=>data.practice[id]?.correct!=null), good=p.filter(id=>data.practice[id].correct).length;
     const active=data.exams.find(e=>e.type===type&&e.status==='active'), n=examMode?(active?.answered||0):p.length;
     return `<article class="panel type-card ${type}"><div class="type-symbol">${icon(type)}</div><div class="row between type-top"><h2 class="type-title">${label}</h2><span class="type-count"><strong>${ids.length}</strong>道</span></div><p class="desc">${examMode?(active?'未交卷的考试已保留，继续完成这套题。':'每个部分独立打乱顺序，保留原题号。'):{single:'从四个选项中选出一个正确答案。',multiple:'选择所有正确选项，少选或多选均记为错误。',judge:'判断题干陈述是否正确。'}[type]}</p><div class="progress">${examMode?`<span style="width:${n/ids.length*100}%"></span>`:`<span class="good" style="width:${good/ids.length*100}%"></span><span class="bad" style="width:${(n-good)/ids.length*100}%"></span>`}</div><div class="row between type-progress small muted"><span>${examMode?(active?'当前考试':'尚未开始'):'已练习'} <b class="mono">${n} / ${ids.length}</b></span><span>${examMode?(active?duration(active.elapsed):'6 个部分'):`正确 ${good} 题`}</span></div>${button('start',`${examMode?(active?'继续考试':'开始考试'):(n?'继续练习':'开始练习')}${icon('arrow')}`,'primary',`data-type="${type}"`)}</article>`;
   }).join('')}</div><div class="home-bottom"><section class="panel catalogue"><div class="section-title"><h2>题库目录</h2><span class="small muted">沿用原文分组</span></div>${data.bank.groups.filter(g=>g.type==='multiple').map((g,i)=>`<div class="catalogue-row"><span class="part">${g.part}</span><span>${g.title}</span><span class="total">${['single','multiple','judge'].map(t=>data.bank.groups.filter(x=>x.type===t)[i].count).join(' / ')} 题</span></div>`).join('')}<p class="footnote">题量依次为单选 / 多选 / 判断；单选第六部分原名“电力基础知识”。</p></section><section class="panel guide"><div class="section-title"><h2>安心接着做</h2>${icon('shield')}</div><div class="guide-item">${icon('data')}<div><h3>选择实时保存</h3><p>答题记录写入本机。关闭页面或重新启动后，已选答案仍然保留。</p></div></div><div class="guide-item">${icon('records')}<div><h3>考试随时续做</h3><p>未交卷的考试可从这里或做题记录继续；交卷后锁定答案，下一次开始新卷。</p></div></div><div class="guide-item">${icon('mistakes')}<div><h3>错题分别整理</h3><p>练习与考试各自归档。是否在复习答对后移除，由你设置。</p></div></div></section></div><p class="source-note">题库来源：${esc(data.bank.title)}（2026 版） · 印刷页码 39–160 页</p>`;
@@ -87,7 +88,7 @@ function answerState(qid){
 function choiceToken(context,key){return context.kind+':'+(context.kind==='exam'?context.exam.id+':':'')+key;}
 function statusFor(key){
   const s=answerState(key);if(!s.answer?.length)return '';
-  if(s.pending)return 'done';
+  if(s.pending||s.correct==null)return 'done';
   if(quiz.kind==='exam'&&quiz.exam.status==='active')return 'done';
   const qid=quiz.kind==='review'?quiz.entries.find(e=>e.id===key)?.qid:key;
   if(questions.get(qid)?.type==='multiple'&&s.correctAnswer?.length&&
@@ -106,22 +107,24 @@ function quizPage(){
   let feedback='';
   if(s.pending){
     feedback=`<div class="feedback neutral" role="status">${icon('data')}<div><strong>正在保存选择…</strong><p>可以继续选择，系统会按顺序保存每次修改。</p></div></div>`;
-  }else if(revealed&&s.answer.length){
+  }else if(revealed&&s.answer.length&&s.correct!=null){
     feedback=`<div class="feedback ${s.correct?'good':'bad'}" role="status">${icon(s.correct?'check':'cross')}<div><strong>${s.correct?'回答正确':'回答错误'}${s.removed?' · 已移出错题集':''}</strong><p>你的选择：${choiceString(s.answer)}　参考答案：<b>${choiceString(s.correctAnswer)}</b>${quiz.kind==='practice'?'。可以继续修改选择。':quiz.kind==='review'?(s.removed?'。原做题记录仍然保留。':'。本次复习不会改写原做题记录。'):'。本场考试已交卷，答案已锁定。'}</p></div></div>`;
   }else if(revealed){
-    feedback=`<div class="feedback neutral" role="status">${icon('book')}<div><strong>参考答案：${choiceString(correctAnswer)}</strong><p>本题尚未作答，查看答案不会计入做题记录。</p></div></div>`;
+    feedback=`<div class="feedback neutral" role="status">${icon('book')}<div><strong>参考答案：${choiceString(correctAnswer)}</strong><p>${s.answer.length?'当前选择尚未检查，点击“下一题”检查答案。':'本题尚未作答，查看答案不会计入做题记录。'}</p></div></div>`;
+  }else if(needsAnswerCheck(quiz,s)){
+    feedback=`<div class="feedback neutral" role="status">${icon('data')}<div><strong>选择已保存，待检查</strong><p>可以继续勾选；点击“下一题”后显示对错和答案，再点一次翻题。</p></div></div>`;
   }else if(active&&s.answer.length){feedback=`<div class="feedback neutral" role="status">${icon('check')}<div><strong>答案已保存</strong><p>交卷前可以随时更改选择，交卷后统一显示对错。</p></div></div>`;}
   const reviewBar=quiz.kind==='review'?`<div class="panel review-toolbar"><span class="muted">${quiz.entry.source==='practice'?'来自正常练习的最新错题':`来自第 ${examNumber(quiz.entry.examId)} 场 · ${fmtDate(quiz.entry.examCreated)} 的考试`} · 原选择 ${choiceString(quiz.entry.original)}</span>${switchControl(quiz.entry.source)}</div>`:'';
   const result=quiz.kind==='exam'&&!active?`<div class="panel result-strip"><div class="result-score mono">${quiz.exam.score}<small> / 100</small></div><div class="result-details"><strong>考试已完成，答案已锁定</strong>正确 ${quiz.exam.correctCount} 题 · 错误 ${quiz.exam.wrongCount} 题 · 用时 ${duration(quiz.exam.elapsed)}<br>${fmtDate(quiz.exam.submitted)} 交卷 · 按每题等权折算，非官方评分</div><span class="spacer"></span>${button('records','查看全部记录','small')}</div>`:'';
   return `<div class="quiz-head"><div class="quiz-title"><span class="eyebrow">${modeLabel}</span><h1>${labels[q.type]} <span class="muted">/</span> ${g.title}</h1><p>${g.part} · ${quiz.kind==='review'?'保留原题号，按错题来源复习':active?'题目仅在各部分内部打乱，题号沿用原题库':quiz.kind==='exam'?'保持本场考试的题目顺序，答案已锁定':'按原题库顺序练习'}</p></div>${quiz.kind==='exam'?`<div class="timer">${icon('clock')}<div><small>${active?'累计答题时间':'本场用时'}</small><strong class="mono" id="timer">${duration(quiz.exam.elapsed)}</strong></div></div>`:button(quiz.kind==='review'?'back-mistakes':'home',`${icon('back')}返回`,'small ghost')}</div>${result}${reviewBar}${quiz.practiceSession?practiceAnswerControl():''}<div class="quiz-layout"><div class="question-column"><article class="panel question-card"><div class="question-meta"><div class="row"><span class="pill blue">${labels[q.type]}</span><span class="small muted">题库第 <b class="mono">${q.number}</b> 题</span></div><span class="small muted mono">${itemIndex+1} / ${quiz.order.length}</span></div>${q.subsection?`<div class="subsection">${esc(q.subsection)}</div>`:''}<h2 class="question-text">${esc(q.text)}</h2><p class="question-hint">${q.type==='multiple'?'本题为多选题，请选择所有正确选项；再次点击可取消。':'请选择一个答案。'}${locked?(quiz.kind==='exam'?' 本场已交卷，答案不可修改。':' 本条错题已移出，复习记录已保存。'):' '+advanceHint(quiz,q)}</p><div class="options ${q.type==='multiple'?'multiple-options':''}" role="group" aria-label="答案选项">${q.options.map(o=>{
-    const selected=s.answer.includes(o.key), correct=revealed&&correctAnswer.includes(o.key), wrong=revealed&&selected&&!correct;
-    return `<button class="option ${selected?'selected':''} ${correct?'correct-option':''} ${wrong?'wrong-option':''}" data-action="choose" data-choice="${o.key}" aria-pressed="${selected}" aria-label="${o.key}：${esc(o.text)}" ${locked?'disabled':''}><span class="choice-key">${o.key}</span><span>${esc(o.text)}</span>${selected?'<span class="option-tail">已选</span>':''}</button>`;
-  }).join('')}</div>${feedback}<div class="question-foot"><span>来源：原题库第 ${q.printedPage}${q.pdfEndPage!==q.pdfPage?'–'+(q.pdfEndPage-1):''} 页 · 答案以原文为准</span><div class="row">${!locked&&s.answer.length?button('clear-answer','清除本题选择','small ghost'):''}${!active?`<a href="/source.pdf#page=${q.pdfPage}" target="_blank" rel="noopener">核对原文 ↗</a>`:''}</div></div></article><div class="quiz-controls">${button('previous',`${icon('back')}上一题`,'',itemIndex<=0?'disabled':'')}<div class="right">${(quiz.kind==='practice'||active)?button('next-unanswered','下一道未答','ghost'):''}${button('next',`下一题${icon('arrow')}`,'primary',itemIndex>=quiz.order.length-1?'disabled':'')}</div></div><p class="key-help">快捷键：数字或 A–F 选择选项，← / → 切换题目</p></div>${answerBoard(answered,key,active)}</div>`;
+    const selected=s.answer.includes(o.key), correct=revealed&&correctAnswer.includes(o.key), wrong=revealed&&s.correct!=null&&selected&&!correct;
+    return `<button class="option ${selected?'selected':''} ${correct?'correct-option':''} ${wrong?'wrong-option':''}" data-action="choose" data-choice="${o.key}" aria-pressed="${selected}" aria-label="${o.key}：${esc(o.text)}" ${locked||checkingAnswer?'disabled':''}><span class="choice-key">${o.key}</span><span>${esc(o.text)}</span>${selected?'<span class="option-tail">已选</span>':''}</button>`;
+  }).join('')}</div>${feedback}<div class="question-foot"><span>来源：原题库第 ${q.printedPage}${q.pdfEndPage!==q.pdfPage?'–'+(q.pdfEndPage-1):''} 页 · 答案以原文为准</span><div class="row">${!locked&&s.answer.length?button('clear-answer','清除本题选择','small ghost'):''}${!active?`<a href="/source.pdf#page=${q.pdfPage}" target="_blank" rel="noopener">核对原文 ↗</a>`:''}</div></div></article><div class="quiz-controls">${button('previous',`${icon('back')}上一题`,'',itemIndex<=0?'disabled':'')}<div class="right">${(quiz.kind==='practice'||active)?button('next-unanswered','下一道未答','ghost'):''}${nextButton(s,itemIndex)}</div></div><p class="key-help">快捷键：数字或 A–F 选择选项，← / → 切换题目</p></div>${answerBoard(answered,key,active)}</div>`;
 }
 function practiceAnswerControl(){
   const session=quiz.practiceSession;
   const scope=quiz.kind==='review'?'本组练习错题':'本套所有题目';
-  const hint=session.error|| (session.loading&&session.showAnswers?'正在读取参考答案…':session.showAnswers?`已显示${scope}的参考答案，查看不会改变作答记录。`:'每次进入默认关闭；关闭时，作答后仍会照常显示对错。');
+  const hint=session.error|| (session.loading&&session.showAnswers?'正在读取参考答案…':session.showAnswers?`已显示${scope}的参考答案，查看不会改变作答记录。`:'每次进入默认关闭；多选题按检查规则显示对错。');
   return `<div class="panel review-toolbar"><label class="switch-wrap"><input id="practice-answers-toggle" type="checkbox" role="switch" aria-describedby="practice-answers-help" ${session.showAnswers?'checked':''}><span>显示整套正确答案</span></label><span id="practice-answers-help" class="small muted" role="status">${esc(hint)}</span></div>`;
 }
 async function togglePracticeAnswers(show){
@@ -146,7 +149,7 @@ function answerBoard(answered,key,active){
   const good=quiz.order.filter(k=>statusFor(k)==='good').length,bad=quiz.order.filter(k=>statusFor(k)==='bad').length,partial=quiz.order.filter(k=>statusFor(k)==='partial').length;
   const objects=quiz.order.map(id=>({key:id,q:questions.get(quiz.kind==='review'?quiz.entries.find(e=>e.id===id).qid:id)}));
   const hasMultiple=objects.some(o=>o.q.type==='multiple');
-  return `<aside class="panel answer-board" aria-label="分组题号导航"><div class="board-head"><div class="row between"><h2>答题卡</h2><span class="small muted">${answered} / ${quiz.order.length} 已答</span></div><div class="progress">${active?`<span style="width:${answered/quiz.order.length*100}%"></span>`:`<span class="good" style="width:${good/quiz.order.length*100}%"></span><span class="partial" style="width:${partial/quiz.order.length*100}%"></span><span class="bad" style="width:${bad/quiz.order.length*100}%"></span>`}</div><div class="legend"><span><i></i>未答</span>${active?'<span><i class="done"></i>已答</span>':`<span><i class="good"></i>正确</span>${hasMultiple?'<span><i class="partial"></i>漏选</span>':''}<span><i class="bad"></i>错误</span>`}<span>深色边框为当前题</span></div><form class="board-jump" id="jump-form"><input aria-label="输入原题号" id="jump-number" inputmode="numeric" pattern="[0-9]+" placeholder="输入原题号跳转" required><button class="btn small" type="submit">跳转</button></form></div><div class="board-groups">${data.bank.groups.map(g=>{
+  return `<aside class="panel answer-board" aria-label="分组题号导航"><div class="board-head"><div class="row between"><h2>答题卡</h2><span class="small muted">${answered} / ${quiz.order.length} 已答</span></div><div class="progress">${active?`<span style="width:${answered/quiz.order.length*100}%"></span>`:`<span class="good" style="width:${good/quiz.order.length*100}%"></span><span class="partial" style="width:${partial/quiz.order.length*100}%"></span><span class="bad" style="width:${bad/quiz.order.length*100}%"></span>`}</div><div class="legend"><span><i></i>未答</span>${active?'<span><i class="done"></i>已答</span>':`<span><i class="good"></i>正确</span>${hasMultiple?'<span><i class="done"></i>待检查</span><span><i class="partial"></i>漏选</span>':''}<span><i class="bad"></i>错误</span>`}<span>深色边框为当前题</span></div><form class="board-jump" id="jump-form"><input aria-label="输入原题号" id="jump-number" inputmode="numeric" pattern="[0-9]+" placeholder="输入原题号跳转" required><button class="btn small" type="submit">跳转</button></form></div><div class="board-groups">${data.bank.groups.map(g=>{
     const entries=objects.filter(o=>o.q.group===g.id);if(!entries.length)return '';
     return `<details class="question-group" open data-group="${g.id}"><summary>${g.part} · ${g.title}${quiz.kind==='review'?` · ${labels[g.type]}`:''}<small>${entries.filter(o=>answerState(o.key).answer.length).length}/${entries.length}</small></summary><div class="number-grid">${entries.map(o=>`<button class="number-btn ${statusFor(o.key)} ${o.key===key?'current':''}" data-action="jump" data-key="${esc(o.key)}" title="题库第 ${o.q.number} 题${quiz.kind==='review'&&quiz.entry.source==='exam'?' · '+fmtDate(quiz.entries.find(e=>e.id===o.key).examCreated):''}" aria-label="跳转题库第 ${o.q.number} 题，${{good:'正确',partial:'漏选',bad:'错误',done:'已答'}[statusFor(o.key)]||'未答'}" ${o.key===key?'aria-current="step"':''}>${o.q.number}</button>`).join('')}</div></details>`;
   }).join('')}</div>${active?`<div class="board-foot">${button('submit','交卷并查看结果','primary',answered!==quiz.order.length||busy?'disabled':'')}<p>${answered!==quiz.order.length?`还差 ${quiz.order.length-answered} 题，全部作答后可交卷`:'已全部作答，可以交卷；交卷后不能修改答案'}</p></div>`:quiz.kind==='exam'?`<div class="board-foot">${button('first-wrong','定位本卷错题','',quiz.exam.wrongCount?'':'disabled')}</div>`:''}</aside>`;
@@ -154,7 +157,7 @@ function answerBoard(answered,key,active){
 function switchControl(source){return `<label class="switch-wrap"><input type="checkbox" data-setting="autoRemove:${source}" ${data.settings['autoRemove:'+source]?'checked':''}><span>复习答对后自动移出</span></label>`;}
 
 function practiceStats(ids){
-  const answered=ids.filter(id=>data.practice[id]?.answer?.length);
+  const answered=ids.filter(id=>data.practice[id]?.answer?.length&&data.practice[id].correct!=null);
   const correct=answered.filter(id=>data.practice[id].correct===true).length;
   return {total:ids.length,answered:answered.length,correct,accuracy:answered.length?Math.round(correct/answered.length*1000)/10:null};
 }
@@ -164,7 +167,7 @@ function records(){
   const header=heading('做题记录',tab==='practice'?'按题型和原题库部分查看当前练习进度，统计以普通练习的最新选择为准。':'未交卷的考试可继续作答；已交卷的考试保留题序、选择和结果。','学习档案')+`<div class="tabs"><button class="tab ${tab==='exams'?'active':''}" data-action="record-tab" data-value="exams">考试记录 <span class="muted">${data.exams.length}</span></button><button class="tab ${tab==='practice'?'active':''}" data-action="record-tab" data-value="practice">练习记录</button></div>`;
   if(tab==='practice'){
     const all=practiceStats(data.bank.questions.map(q=>q.id));
-    return header+`<div class="stats-row"><div class="panel stat-box"><span>已练习题数 / 总题数</span><strong>${all.answered}<small> / ${all.total}</small></strong></div><div class="panel stat-box"><span>当前答对数</span><strong>${all.correct}</strong></div><div class="panel stat-box"><span>正确率</span><strong>${accuracyLabel(all)}</strong></div></div><p class="summary-note">正确率＝当前答对数 ÷ 已练习题数。清空选择后不计入已练习；错题复习不改变普通练习统计。</p>${Object.entries(labels).map(([type,label])=>{
+    return header+`<div class="stats-row"><div class="panel stat-box"><span>已练习题数 / 总题数</span><strong>${all.answered}<small> / ${all.total}</small></strong></div><div class="panel stat-box"><span>当前答对数</span><strong>${all.correct}</strong></div><div class="panel stat-box"><span>正确率</span><strong>${accuracyLabel(all)}</strong></div></div><p class="summary-note">正确率＝当前答对数 ÷ 已练习题数。待检查的多选与清空选择不计入已练习；错题复习不改变普通练习统计。</p>${Object.entries(labels).map(([type,label])=>{
       const stats=practiceStats(questionIds(type));
       return `<section class="panel practice-summary" data-practice-type="${type}"><div class="practice-summary-head"><h2>${icon(type)}${label}</h2><p>已练习 <b class="mono">${stats.answered} / ${stats.total}</b><span>当前答对 <b class="mono">${stats.correct}</b></span><span>正确率 <b class="mono">${accuracyLabel(stats)}</b></span></p></div><div class="table-wrap"><table class="summary-table" aria-label="${label}分部分统计"><thead><tr><th scope="col">题库部分</th><th scope="col">已练习 / 总题数</th><th scope="col">当前答对数</th><th scope="col">正确率</th></tr></thead><tbody>${data.bank.groups.filter(g=>g.type===type).map(g=>{
         const stats=practiceStats(data.bank.questions.filter(q=>q.group===g.id).map(q=>q.id));
@@ -298,10 +301,44 @@ function advanceRule(context,question){
   if(context.kind==='practice')return 'correct';
   if(question.type==='multiple')return 'manual';
   if(context.kind==='exam')return context.exam.status==='active'?'answered':'manual';
-  return context.entry.source==='practice'?'correct':'answered';
+  return 'correct';
+}
+function needsAnswerCheck(context,state){
+  return questions.get(context.qid)?.type==='multiple'&&
+    (context.kind==='practice'||context.kind==='review')&&
+    state.answer.length>0&&state.correct==null;
+}
+function nextButton(state,index){
+  const needsCheck=needsAnswerCheck(quiz,state),last=index>=quiz.order.length-1;
+  return button('next',`${last&&needsCheck?'检查答案':'下一题'}${icon('arrow')}`,'primary',checkingAnswer||last&&!needsCheck?'disabled':'');
+}
+async function nextQuestion(unanswered=false){
+  if(!quiz||checkingAnswer)return;
+  cancelAutoAdvance();
+  const context=quiz,serial=routeSerial,hash=location.hash;
+  checkingAnswer=true;render();
+  try{
+    await savePromise;
+    if(quiz!==context||serial!==routeSerial||hash!==location.hash||lastError)return;
+    const key=context.kind==='review'?context.entry.id:context.qid;
+    if(needsAnswerCheck(context,answerState(key))){
+      await saveAnswer(null,false,true);
+      return;
+    }
+    let next;
+    if(unanswered){
+      const index=context.order.indexOf(key),rotated=[...context.order.slice(index+1),...context.order.slice(0,index+1)];
+      next=rotated.find(id=>!answerState(id).answer.length);
+    }else next=context.order.slice(context.order.indexOf(key)+1).find(id=>context.kind!=='review'||data.mistakes.some(m=>m.id===id));
+    if(next)jump(next);
+    else if(context.kind==='review'&&context.entry.removed)goto('mistakes/'+context.entry.source);
+    else toast(unanswered?'所有题目均已作答。':'已到最后一题。');
+  }finally{checkingAnswer=false;render();}
 }
 function advanceHint(context,question){
   const rule=advanceRule(context,question);
+  if(question.type==='multiple'&&(context.kind==='practice'||context.kind==='review'))
+    return context.kind==='practice'?'全部选对后自动下一题；否则点击“下一题”检查，再点一次翻题。':'点击“下一题”检查答案，再点一次翻题。';
   if(context.order.at(-1)===(context.kind==='review'?context.entry.id:question.id))return '本题为最后一题，选择会自动保存。';
   if(rule==='correct')return '选对后自动进入下一题。';
   if(rule==='answered')return '选择后自动进入下一题，可通过题号返回修改。';
@@ -329,14 +366,14 @@ function scheduleAutoAdvance(context,key,revision,serial,hash){
     }
   },350);
 }
-async function saveAnswer(choice,clear=false){
+async function saveAnswer(choice,clear=false,check=false){
   cancelAutoAdvance();
-  if(!quiz)return;
+  if(!quiz||checkingAnswer&&!check)return;
   const q=questions.get(quiz.qid),key=quiz.kind==='review'?quiz.entry.id:q.id,s=answerState(key);
   if((quiz.kind==='exam'&&quiz.exam.status!=='active')||s.removed)return;
-  let answer=clear?[]:q.type==='multiple'?(s.answer.includes(choice)?s.answer.filter(x=>x!==choice):[...s.answer,choice].sort()):[choice];
+  let answer=check?s.answer:clear?[]:q.type==='multiple'?(s.answer.includes(choice)?s.answer.filter(x=>x!==choice):[...s.answer,choice].sort()):[choice];
   const context=quiz,serial=routeSerial,hash=location.hash;
-  if(JSON.stringify(answer)===JSON.stringify(s.answer)&&!lastError&&!(quiz.kind==='review'&&s.correct&&data.settings['autoRemove:'+quiz.entry.source])){
+  if(!check&&JSON.stringify(answer)===JSON.stringify(s.answer)&&!lastError&&!(quiz.kind==='review'&&s.correct&&data.settings['autoRemove:'+quiz.entry.source])){
     if(!clear)scheduleAutoAdvance(context,key,choiceRevision,serial,hash);
     return;
   }
@@ -346,12 +383,12 @@ async function saveAnswer(choice,clear=false){
     let saved=false;
     try{
       if(context.kind==='practice'){
-        const result=await api('/api/practice',{qid:q.id,answer});
+        const result=await api('/api/practice',{qid:q.id,answer,check});
         if(result)data.practice[q.id]=result;else delete data.practice[q.id];
         data.mistakes=(await api('/api/bootstrap')).mistakes;
       }else if(context.kind==='exam')context.exam=await api('/api/exam/answer',{id:context.exam.id,qid:q.id,answer});
       else{
-        const result=await api('/api/review',{id:context.entry.id,answer});
+        const result=await api('/api/review',{id:context.entry.id,answer,check});
         Object.assign(context.entry,{review:answer,reviewCorrect:result.correct,correctAnswer:result.correctAnswer,removed:result.removed});
         if(result.removed){data.mistakes=data.mistakes.filter(m=>m.id!==context.entry.id);toast('已移出这条错题，原始做题记录仍保留');}
       }
@@ -361,7 +398,7 @@ async function saveAnswer(choice,clear=false){
       if(pendingAnswers.get(saveKey)?.revision===revision)pendingAnswers.delete(saveKey);
       saveCount--;busy=saveCount>0;if(busy)saveLabel='正在保存…';render();
     }
-    if(saved&&!clear)scheduleAutoAdvance(context,key,revision,serial,hash);
+    if(saved&&!clear&&!check)scheduleAutoAdvance(context,key,revision,serial,hash);
   });
   await savePromise;
 }
@@ -386,12 +423,12 @@ document.addEventListener('click',async event=>{
     }else if(action==='choose')await saveAnswer(target.dataset.choice);
     else if(action==='clear-answer')await saveAnswer(null,true);
     else if(action==='jump')jump(target.dataset.key);
-    else if(action==='previous'||action==='next'){
-      const key=quiz.kind==='review'?quiz.entry.id:quiz.qid,idx=quiz.order.indexOf(key)+(action==='previous'?-1:1);
+    else if(action==='next')await nextQuestion();
+    else if(action==='previous'){
+      const key=quiz.kind==='review'?quiz.entry.id:quiz.qid,idx=quiz.order.indexOf(key)-1;
       if(quiz.order[idx])jump(quiz.order[idx]);
     }else if(action==='next-unanswered'){
-      const index=quiz.order.indexOf(quiz.qid),rotated=[...quiz.order.slice(index+1),...quiz.order.slice(0,index+1)],next=rotated.find(id=>!answerState(id).answer.length);
-      if(next)jump(next);else toast('所有题目均已作答。');
+      await nextQuestion(true);
     }else if(action==='submit')confirmDialog('确认交卷？',`本场 ${quiz.order.length} 道${labels[quiz.type]}已全部作答。交卷后会显示答案与成绩，<b>本场答案将锁定，不能再修改</b>。`,'确认交卷',async()=>{await savePromise;const result=await api('/api/exam/submit',{id:quiz.exam.id});timerId=null;quiz.exam=result;await refresh();render();window.scrollTo(0,0);toast('已交卷，考试记录与错题已保存');});
     else if(action==='cancel-dialog')$('#confirm-dialog').close();
     else if(action==='confirm-dialog'){const dialog=$('#confirm-dialog'),callback=dialog._callback;target.disabled=true;try{await callback();dialog.close();}catch(e){target.disabled=false;throw e;}}
@@ -429,7 +466,8 @@ document.addEventListener('keydown',event=>{
   if(!quiz||$('#confirm-dialog').open||/INPUT|TEXTAREA|SELECT|A|SUMMARY/.test(event.target.tagName)||event.ctrlKey||event.metaKey||event.altKey)return;
   const q=questions.get(quiz.qid),index=/^[1-8]$/.test(event.key)?Number(event.key)-1:'abcdefgh'.indexOf(event.key.toLowerCase());
   if(index>=0&&q.options[index]){event.preventDefault();saveAnswer(q.options[index].key);}
-  else if(event.key==='ArrowLeft'||event.key==='ArrowRight'){event.preventDefault();const key=quiz.kind==='review'?quiz.entry.id:quiz.qid,idx=quiz.order.indexOf(key)+(event.key==='ArrowLeft'?-1:1);if(quiz.order[idx])jump(quiz.order[idx]);}
+  else if(event.key==='ArrowRight'){event.preventDefault();nextQuestion().catch(errorMessage);}
+  else if(event.key==='ArrowLeft'){event.preventDefault();const key=quiz.kind==='review'?quiz.entry.id:quiz.qid,idx=quiz.order.indexOf(key)-1;if(quiz.order[idx])jump(quiz.order[idx]);}
 });
 window.addEventListener('hashchange',route);
 route();

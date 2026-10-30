@@ -38,13 +38,16 @@ async function harness(mode='practice',type='single'){
     }
     if(url.startsWith('/api/practice/answers?'))return {answers:Object.fromEntries(bank.questions.filter(q=>q.type===url.split('=')[1]).map(q=>[q.id,q.answer]))};
     if(url==='/api/practice'){
-      const result=payload.answer.length?{answer:payload.answer,correct:JSON.stringify(payload.answer)===JSON.stringify(correct(payload.qid)),correctAnswer:correct(payload.qid)}:null;
+      const matches=JSON.stringify(payload.answer)===JSON.stringify(correct(payload.qid));
+      const graded=questions.get(payload.qid).type!=='multiple'||payload.check||matches;
+      const result=payload.answer.length?{answer:payload.answer,correct:graded?matches:null,correctAnswer:graded?correct(payload.qid):null}:null;
       if(result)db.practice[payload.qid]=clone(result);else delete db.practice[payload.qid];
       db.history.push(clone(payload));return clone(result);
     }
     if(url==='/api/review'){
       const entry=db.mistakes.find(e=>e.id===payload.id);assert.ok(entry,'review entry must exist');
-      const result={answer:payload.answer,correct:JSON.stringify(payload.answer)===JSON.stringify(correct(entry.qid)),correctAnswer:correct(entry.qid)};
+      const graded=questions.get(entry.qid).type!=='multiple'||payload.check;
+      const result={answer:payload.answer,correct:graded?JSON.stringify(payload.answer)===JSON.stringify(correct(entry.qid)):null,correctAnswer:graded?correct(entry.qid):null};
       result.removed=Boolean(result.correct&&db.settings['autoRemove:'+entry.source]);
       Object.assign(entry,{review:clone(payload.answer),reviewCorrect:result.correct,correctAnswer:result.correctAnswer});
       if(result.removed)db.mistakes=db.mistakes.filter(e=>e.id!==entry.id);
@@ -79,7 +82,7 @@ async function test(name,body){await body();passed++;console.log('ok '+passed+' 
   for(const mode of ['practice','exam','review-practice','review-exam'])for(const type of ['single','multiple','judge']){
     await test(mode+'/'+type+' follows the requested next-question rule',async()=>{
       const h=await harness(mode,type),id=h.ids[0];
-      const answer=(mode==='exam'||mode==='review-exam')?wrong(id):correct(id);
+      const answer=mode==='exam'?wrong(id):correct(id);
       for(const choice of answer)await h.choose(choice);
       h.flush();
       const shouldMove=type!=='multiple'||mode==='practice';
@@ -87,12 +90,53 @@ async function test(name,body){await body();passed++;console.log('ok '+passed+' 
       assert.equal(h.db.history.length,answer.length,'only user selections are saved');
     });
   }
-  for(const mode of ['practice','review-practice'])await test(mode+' wrong answer stays on the question',async()=>{
+  for(const mode of ['practice','review-practice','review-exam'])await test(mode+' wrong answer stays on the question',async()=>{
     const h=await harness(mode);await h.choose(wrong('1')[0]);h.flush();assert.equal(h.ctx.location.hash,h.initial);
   });
   await test('ordinary multiple-choice incomplete answer stays until all correct options are selected',async()=>{
     const h=await harness('practice','multiple');await h.choose('A');h.flush();assert.equal(h.ctx.location.hash,h.initial);
     await h.choose('B');await h.choose('C');h.flush();assert.ok(h.ctx.location.hash.endsWith('/247'));
+  });
+  for(const mode of ['practice','review-practice','review-exam'])await test(mode+' multiple drafts stay hidden, Next checks first, then navigates',async()=>{
+    const h=await harness(mode,'multiple');await h.choose('A');h.flush();
+    const state=()=>h.read('answerState(quiz.kind==="review"?quiz.entry.id:quiz.qid)');
+    assert.equal(state().correct,null);assert.equal(state().correctAnswer,null);
+    assert.equal(h.run('statusFor(quiz.kind==="review"?quiz.entry.id:quiz.qid)'),'done');
+    assert.doesNotMatch(h.run('quizPage()'),/回答错误|回答正确|参考答案：<b>|correct-option|wrong-option/);
+    await h.navigate(h.initial);assert.equal(state().correct,null,'draft survives navigation/reload');
+    await h.run('nextQuestion()');h.flush();assert.equal(h.ctx.location.hash,h.initial);
+    assert.equal(state().correct,false);assert.match(h.run('quizPage()'),/回答错误/);
+    assert.equal(h.run('statusFor(quiz.kind==="review"?quiz.entry.id:quiz.qid)'),'partial');
+    await h.choose('B');assert.equal(state().correct,null,'editing invalidates the previous check');
+    await h.run('nextQuestion()');assert.equal(h.ctx.location.hash,h.initial);
+    await h.run('nextQuestion()');assert.ok(h.ctx.location.hash.endsWith(mode==='practice'?'/247':'%3A247'));
+  });
+  for(const mode of ['review-practice','review-exam'])await test(mode+' complete multiple answer is not graded or removed until checked',async()=>{
+    const h=await harness(mode,'multiple');h.db.settings['autoRemove:'+h.read('quiz.entry.source')]=true;await h.navigate(h.initial);
+    for(const c of correct('246'))await h.choose(c);h.flush();
+    assert.equal(h.read('quiz.entry.reviewCorrect'),null);assert.equal(h.read('quiz.entry.removed'),false);
+    assert.equal(h.db.mistakes.length,2);assert.equal(h.ctx.location.hash,h.initial);
+    await h.run('nextQuestion()');h.flush();assert.equal(h.ctx.location.hash,h.initial);
+    assert.equal(h.read('quiz.entry.removed'),true);assert.match(h.run('quizPage()'),/回答正确/);
+    await h.run('nextQuestion()');assert.ok(h.ctx.location.hash.endsWith('%3A247'));
+  });
+  await test('last multiple practice question can still be checked',async()=>{
+    const h=await harness('practice','multiple');await h.navigate('#/practice/multiple/426');await h.choose(wrong('426')[0]);
+    assert.match(h.run('quizPage()'),/data-action="next" >检查答案/);
+    await h.run('nextQuestion()');assert.equal(h.ctx.location.hash,'#/practice/multiple/426');assert.match(h.run('quizPage()'),/回答错误/);
+  });
+  await test('answer preview remains opt-in and does not grade a draft',async()=>{
+    const h=await harness('practice','multiple');await h.choose('A');await h.run('togglePracticeAnswers(true)');
+    assert.match(h.run('quizPage()'),/参考答案：A、B、C/);assert.doesNotMatch(h.run('quizPage()'),/回答错误|wrong-option/);
+    assert.deepEqual(h.read('practiceStats(["246"])'),{total:1,answered:0,correct:0,accuracy:null});
+    await h.run('togglePracticeAnswers(false)');assert.doesNotMatch(h.run('quizPage()'),/correct-option|参考答案：/);
+  });
+  await test('Next waits for draft saving and a failed check neither reveals nor navigates',async()=>{
+    const h=await harness('practice','multiple');h.bridge.hold='/api/practice';const saving=h.choose('A');await h.bridge.held.promise;
+    const checking=h.run('nextQuestion()');h.bridge.release.resolve();await Promise.all([saving,checking]);
+    assert.equal(h.ctx.location.hash,h.initial);assert.equal(h.db.practice['246'].correct,false);
+    await h.choose('B');h.bridge.fail='/api/practice';await h.run('nextQuestion()');
+    assert.equal(h.ctx.location.hash,h.initial);assert.equal(h.db.practice['246'].correct,null);assert.ok(h.read('lastError'));
   });
   await test('viewing answers alone neither advances nor writes records',async()=>{
     const h=await harness('review-practice');const before=clone(h.db);
@@ -117,7 +161,9 @@ async function test(name,body){await body();passed++;console.log('ok '+passed+' 
   await test('multiple-choice review stays even when the correct answer removes the entry',async()=>{
     const h=await harness('review-practice','multiple');h.db.settings['autoRemove:practice']=true;await h.navigate(h.initial);
     for(const c of correct('246'))await h.choose(c);h.flush();assert.equal(h.ctx.location.hash,h.initial);
-    assert.equal(h.read('quiz.entry.removed'),true);h.run('jump(quiz.order[1])');await h.navigate(h.ctx.location.hash);
+    assert.equal(h.read('quiz.entry.removed'),false);
+    await h.run('nextQuestion()');assert.equal(h.read('quiz.entry.removed'),true);assert.equal(h.ctx.location.hash,h.initial);
+    await h.run('nextQuestion()');await h.navigate(h.ctx.location.hash);
     assert.equal(h.read('quiz.qid'),'247');
   });
   await test('latest rapid choice wins over an earlier correct result',async()=>{
