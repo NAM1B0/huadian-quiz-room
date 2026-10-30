@@ -48,7 +48,9 @@ final class PhoneUITests: XCTestCase {
     }
     private func tapOption(_ key: String) {
         let button = app.buttons["option-" + key]
-        if !button.isHittable { app.swipeUp() }
+        for _ in 0..<3 where !button.isHittable {
+            if button.frame.midY < app.frame.midY { app.swipeDown() } else { app.swipeUp() }
+        }
         XCTAssertTrue(button.isHittable); button.tap()
     }
     private func assertNoAutomaticNext(_ number: String) {
