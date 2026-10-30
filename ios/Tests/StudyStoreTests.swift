@@ -209,7 +209,8 @@ final class StudyStoreTests: XCTestCase {
             let key = try seedMultipleReview(store, source: source)
             let q = try XCTUnwrap(store.questions["246"])
             try store.setAutoRemove(source, enabled: true)
-            let original = store.state.practice
+            // Compare the persisted representation: ISO-8601 backups store whole seconds.
+            let original = try StudyStore.encoder().encode(store.state.practice)
             try store.review(key, choices: q.answer)
             XCTAssertEqual(store.reviewResult(key), .pending)
             XCTAssertFalse(try XCTUnwrap(store.mistake(key)).dismissed)
@@ -223,7 +224,7 @@ final class StudyStoreTests: XCTestCase {
             try resumed.review(key, choices: q.answer, check: true)
             XCTAssertEqual(resumed.reviewResult(key), .correct)
             XCTAssertTrue(try XCTUnwrap(resumed.mistake(key)).dismissed)
-            XCTAssertEqual(resumed.state.practice, original)
+            XCTAssertEqual(try StudyStore.encoder().encode(resumed.state.practice), original)
         }
     }
 
